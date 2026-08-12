@@ -1,0 +1,38 @@
+# Editor and local IDE state
+.vscode/
+.idea/
+*.code-workspace
+
+# Build outputs
+build/
+out/
+bin/
+obj/
+Debug/
+Release/
+x64/
+x86/
+
+# Compiled binaries and objects
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+
+# Runtime and benchmark outputs
+*.log
+*.out
+*.tmp
+*.csv
+results/
+outputs/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
