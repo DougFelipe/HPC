@@ -4,17 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <math.h>
 #include <stdint.h>
 
-/*
- * Configuracao do experimento.
- *
- * N_MIN = menor matriz testada
- * N_MAX = maior matriz testada
- * PASSO = incremento entre os tamanhos
- * REPETICOES = numero de medicoes por versao
- */
+
+/* ============================================================
+ * PARÂMETROS DO EXPERIMENTO
+ * ============================================================ */
+
 #define N_MIN         100
 #define N_MAX        5000
 #define PASSO         100
@@ -22,24 +18,21 @@
 
 
 /*
- * Variavel volatile utilizada para garantir que o compilador
- * nao elimine os calculos durante a otimizacao.
+ * Impede que o compilador elimine os cálculos durante
+ * a otimização do programa.
  */
-static volatile double benchmark_sink = 0.0;
+static volatile long long benchmark_sink = 0;
 
 
 /* ============================================================
- * TEMPORIZACAO
+ * TEMPORIZAÇÃO
  * ============================================================ */
 
 /*
- * Calcula o intervalo entre dois instantes obtidos com
- * clock_gettime().
- *
- * Retorno:
- *     tempo em segundos.
+ * Calcula o intervalo entre dois instantes de tempo.
+ * O resultado é retornado em segundos.
  */
-static double elapsed_seconds(
+static double tempo_decorrido(
     struct timespec inicio,
     struct timespec fim
 )
@@ -55,62 +48,61 @@ static double elapsed_seconds(
 
 
 /* ============================================================
- * INICIALIZACAO DOS DADOS
+ * INICIALIZAÇÃO DOS DADOS
  * ============================================================ */
 
 /*
- * Inicializa matriz e vetor de forma deterministica.
+ * Inicializa a matriz e o vetor com valores inteiros pequenos
+ * e determinísticos.
  *
- * A matriz e armazenada como um unico bloco continuo:
+ * A matriz é armazenada em um bloco contínuo de memória,
+ * seguindo a organização row-major:
  *
  *     A[i][j] -> A[i * n + j]
- *
- * Isso corresponde ao armazenamento row-major utilizado em C.
  */
 static void inicializar_dados(
-    double *A,
-    double *x,
+    int *A,
+    int *x,
     size_t n
 )
 {
     for (size_t i = 0; i < n; ++i) {
 
-        x[i] = (double)((i % 50) + 1) * 0.01;
+        x[i] = (int)(i % 5) + 1;
 
         for (size_t j = 0; j < n; ++j) {
 
             A[i * n + j] =
-                (double)(((i + j) % 100) + 1) * 0.001;
+                (int)((i + j) % 10) + 1;
         }
     }
 }
 
 
 /* ============================================================
- * MxV - ACESSO POR LINHAS
+ * MULTIPLICAÇÃO MATRIZ-VETOR POR LINHAS
  * ============================================================ */
 
 /*
- * Linha externa, coluna interna.
+ * Percorre primeiro as linhas e depois as colunas.
  *
- * Ordem de acesso:
+ * A ordem de acesso segue:
  *
- * A[0][0], A[0][1], A[0][2], ...
- * A[1][0], A[1][1], A[1][2], ...
+ *     A[0][0], A[0][1], A[0][2], ...
+ *     A[1][0], A[1][1], A[1][2], ...
  *
- * Como C armazena matrizes por linhas, os acessos consecutivos
- * tambem correspondem a posicoes consecutivas na memoria.
+ * Esse padrão acompanha a disposição row-major dos dados.
  */
 static void mxv_linhas(
-    const double *A,
-    const double *x,
-    double *y,
+    const int *A,
+    const int *x,
+    int *y,
     size_t n
 )
 {
     for (size_t i = 0; i < n; ++i) {
 
-        double soma = 0.0;
+        int soma = 0;
 
         for (size_t j = 0; j < n; ++j) {
 
@@ -123,33 +115,30 @@ static void mxv_linhas(
 
 
 /* ============================================================
- * MxV - ACESSO POR COLUNAS
+ * MULTIPLICAÇÃO MATRIZ-VETOR POR COLUNAS
  * ============================================================ */
 
 /*
- * Coluna externa, linha interna.
+ * Percorre primeiro as colunas e depois as linhas.
  *
- * Ordem de acesso:
+ * A ordem de acesso segue:
  *
- * A[0][0], A[1][0], A[2][0], ...
- * A[0][1], A[1][1], A[2][1], ...
+ *     A[0][0], A[1][0], A[2][0], ...
+ *     A[0][1], A[1][1], A[2][1], ...
  *
- * Os acessos sucessivos ficam separados por aproximadamente
- * n * sizeof(double) bytes na memoria.
+ * Nesse caso, acessos consecutivos à matriz apresentam
+ * distância aproximada de n * sizeof(int) bytes.
  */
 static void mxv_colunas(
-    const double *A,
-    const double *x,
-    double *y,
+    const int *A,
+    const int *x,
+    int *y,
     size_t n
 )
 {
     for (size_t j = 0; j < n; ++j) {
 
-        /*
-         * x[j] sera reutilizado para todas as linhas dessa coluna.
-         */
-        const double xj = x[j];
+        int xj = x[j];
 
         for (size_t i = 0; i < n; ++i) {
 
@@ -160,27 +149,28 @@ static void mxv_colunas(
 
 
 /* ============================================================
- * CALCULO DA MEDIANA
+ * CÁLCULO DA MEDIANA
  * ============================================================ */
 
+/*
+ * Função auxiliar para ordenação dos tempos medidos.
+ */
 static int comparar_double(
     const void *a,
     const void *b
 )
 {
-    const double da = *(const double *)a;
-    const double db = *(const double *)b;
+    double x = *(const double *)a;
+    double y = *(const double *)b;
 
-    return (da > db) - (da < db);
+    return (x > y) - (x < y);
 }
 
 
 /*
- * Utiliza a mediana das repeticoes para reduzir a influencia
- * de valores atipicos causados pelo sistema operacional,
- * escalonamento de processos etc.
+ * Calcula a mediana dos tempos obtidos nas repetições.
  */
-static double mediana(
+static double calcular_mediana(
     double *valores,
     size_t quantidade
 )
@@ -206,13 +196,13 @@ static double mediana(
 
 
 /* ============================================================
- * BENCHMARK - LINHAS
+ * MEDIÇÃO DO ACESSO POR LINHAS
  * ============================================================ */
 
 static double medir_linhas(
-    const double *A,
-    const double *x,
-    double *y,
+    const int *A,
+    const int *x,
+    int *y,
     size_t n
 )
 {
@@ -225,12 +215,7 @@ static double medir_linhas(
         exit(EXIT_FAILURE);
     }
 
-
-    /*
-     * Apenas a multiplicacao esta dentro da regiao medida.
-     */
     mxv_linhas(A, x, y, n);
-
 
     if (clock_gettime(CLOCK_MONOTONIC, &fim) != 0) {
 
@@ -238,48 +223,35 @@ static double medir_linhas(
         exit(EXIT_FAILURE);
     }
 
-
-    /*
-     * Usa parte do resultado para impedir que um compilador
-     * otimizado considere o calculo desnecessario.
-     *
-     * Isso ocorre DEPOIS da medicao.
-     */
     benchmark_sink += y[n / 2];
 
-
-    return elapsed_seconds(inicio, fim);
+    return tempo_decorrido(inicio, fim);
 }
 
 
 /* ============================================================
- * BENCHMARK - COLUNAS
+ * MEDIÇÃO DO ACESSO POR COLUNAS
  * ============================================================ */
 
 static double medir_colunas(
-    const double *A,
-    const double *x,
-    double *y,
+    const int *A,
+    const int *x,
+    int *y,
     size_t n
 )
 {
     struct timespec inicio;
     struct timespec fim;
 
-
     /*
-     * A versao por colunas acumula os resultados em y[i].
-     *
-     * Portanto, o vetor precisa ser zerado antes.
-     *
-     * Esse zeramento ocorre FORA da regiao cronometrada.
+     * A implementação por colunas acumula valores em y.
+     * O vetor é zerado antes da região cronometrada.
      */
     memset(
         y,
         0,
-        n * sizeof(double)
+        n * sizeof(int)
     );
-
 
     if (clock_gettime(CLOCK_MONOTONIC, &inicio) != 0) {
 
@@ -287,9 +259,7 @@ static double medir_colunas(
         exit(EXIT_FAILURE);
     }
 
-
     mxv_colunas(A, x, y, n);
-
 
     if (clock_gettime(CLOCK_MONOTONIC, &fim) != 0) {
 
@@ -297,52 +267,33 @@ static double medir_colunas(
         exit(EXIT_FAILURE);
     }
 
-
     benchmark_sink += y[n / 2];
 
-
-    return elapsed_seconds(inicio, fim);
+    return tempo_decorrido(inicio, fim);
 }
 
 
 /* ============================================================
- * VALIDACAO DOS RESULTADOS
+ * VALIDAÇÃO DOS RESULTADOS
  * ============================================================ */
 
 /*
- * Verifica se as duas implementacoes produziram resultados
- * numericamente equivalentes.
+ * Verifica se as duas implementações produziram exatamente
+ * o mesmo vetor resultado.
  */
 static int validar_resultados(
-    const double *a,
-    const double *b,
+    const int *a,
+    const int *b,
     size_t n
 )
 {
-    const double tolerancia_absoluta = 1e-10;
-    const double tolerancia_relativa = 1e-9;
-
-
     for (size_t i = 0; i < n; ++i) {
 
-        double diferenca =
-            fabs(a[i] - b[i]);
-
-        double escala =
-            fmax(fabs(a[i]), fabs(b[i]));
-
-
-        if (
-            diferenca >
-            tolerancia_absoluta
-            +
-            tolerancia_relativa * escala
-        ) {
+        if (a[i] != b[i]) {
 
             return 0;
         }
     }
-
 
     return 1;
 }
@@ -368,13 +319,8 @@ int main(void)
 
 
     /*
-     * Executa o experimento para:
-     *
-     * 100
-     * 200
-     * 300
-     * ...
-     * 5000
+     * Executa o experimento para matrizes quadradas entre
+     * N_MIN e N_MAX, utilizando o incremento definido em PASSO.
      */
     for (
         size_t n = N_MIN;
@@ -383,12 +329,13 @@ int main(void)
     ) {
 
         /*
-         * Verificacao para evitar overflow no calculo n * n.
+         * Verifica a possibilidade de overflow antes
+         * da alocação da matriz.
          */
         if (
             n > SIZE_MAX / n
             ||
-            n * n > SIZE_MAX / sizeof(double)
+            n * n > SIZE_MAX / sizeof(int)
         ) {
 
             fprintf(
@@ -405,20 +352,20 @@ int main(void)
 
 
         /* ====================================================
-         * ALOCACAO
+         * ALOCAÇÃO DE MEMÓRIA
          * ==================================================== */
 
-        double *A =
-            malloc(elementos * sizeof(double));
+        int *A =
+            malloc(elementos * sizeof(int));
 
-        double *x =
-            malloc(n * sizeof(double));
+        int *x =
+            malloc(n * sizeof(int));
 
-        double *y_linhas =
-            malloc(n * sizeof(double));
+        int *y_linhas =
+            malloc(n * sizeof(int));
 
-        double *y_colunas =
-            malloc(n * sizeof(double));
+        int *y_colunas =
+            malloc(n * sizeof(int));
 
 
         if (
@@ -447,7 +394,7 @@ int main(void)
 
 
         /* ====================================================
-         * INICIALIZACAO
+         * INICIALIZAÇÃO
          * ==================================================== */
 
         inicializar_dados(
@@ -458,13 +405,11 @@ int main(void)
 
 
         /* ====================================================
-         * WARM-UP
-         * ==================================================== */
-
-        /*
-         * Executamos uma vez cada implementacao sem medir.
+         * AQUECIMENTO
+         * ====================================================
          *
-         * Isso reduz efeitos especificos da primeira execucao.
+         * Executa previamente as duas implementações.
+         * Essas execuções não participam das medições.
          */
 
         mxv_linhas(
@@ -474,13 +419,11 @@ int main(void)
             n
         );
 
-
         memset(
             y_colunas,
             0,
-            n * sizeof(double)
+            n * sizeof(int)
         );
-
 
         mxv_colunas(
             A,
@@ -491,7 +434,7 @@ int main(void)
 
 
         /* ====================================================
-         * VALIDACAO INICIAL
+         * VALIDAÇÃO INICIAL
          * ==================================================== */
 
         if (
@@ -504,8 +447,7 @@ int main(void)
 
             fprintf(
                 stderr,
-                "Erro: resultados divergentes "
-                "para N = %zu.\n",
+                "Erro: resultados divergentes para N = %zu.\n",
                 n
             );
 
@@ -519,7 +461,7 @@ int main(void)
 
 
         /* ====================================================
-         * REPETICOES DO BENCHMARK
+         * REPETIÇÕES DO BENCHMARK
          * ==================================================== */
 
         double tempos_linhas[REPETICOES];
@@ -533,18 +475,9 @@ int main(void)
         ) {
 
             /*
-             * Alterna a ordem das implementacoes.
-             *
-             * Repeticao par:
-             *     linha -> coluna
-             *
-             * Repeticao impar:
-             *     coluna -> linha
-             *
-             * Isso reduz o vies causado por executar
-             * sempre uma versao primeiro.
+             * A ordem das implementações é alternada entre
+             * as repetições para reduzir viés de execução.
              */
-
             if (repeticao % 2 == 0) {
 
                 tempos_linhas[repeticao] =
@@ -554,7 +487,6 @@ int main(void)
                         y_linhas,
                         n
                     );
-
 
                 tempos_colunas[repeticao] =
                     medir_colunas(
@@ -574,7 +506,6 @@ int main(void)
                         n
                     );
 
-
                 tempos_linhas[repeticao] =
                     medir_linhas(
                         A,
@@ -587,7 +518,7 @@ int main(void)
 
 
         /* ====================================================
-         * VALIDACAO FINAL
+         * VALIDAÇÃO FINAL
          * ==================================================== */
 
         if (
@@ -600,8 +531,8 @@ int main(void)
 
             fprintf(
                 stderr,
-                "Erro: resultados divergentes "
-                "apos benchmark para N = %zu.\n",
+                "Erro: resultados divergentes apos benchmark "
+                "para N = %zu.\n",
                 n
             );
 
@@ -619,19 +550,26 @@ int main(void)
          * ==================================================== */
 
         double tempo_linhas =
-            mediana(
+            calcular_mediana(
                 tempos_linhas,
                 REPETICOES
             );
 
-
         double tempo_colunas =
-            mediana(
+            calcular_mediana(
                 tempos_colunas,
                 REPETICOES
             );
 
 
+        /*
+         * A métrica C/L representa a razão entre o tempo
+         * por colunas e o tempo por linhas.
+         *
+         * C/L = 1  -> tempos equivalentes
+         * C/L > 1  -> acesso por colunas mais lento
+         * C/L < 1  -> acesso por colunas mais rápido
+         */
         double razao = 0.0;
 
         if (tempo_linhas > 0.0) {
@@ -651,18 +589,11 @@ int main(void)
             razao
         );
 
-
-        /*
-         * Forca a exibicao imediata de cada tamanho.
-         *
-         * Isso e util porque N=5000 pode fazer o experimento
-         * completo levar algum tempo.
-         */
         fflush(stdout);
 
 
         /* ====================================================
-         * LIBERACAO
+         * LIBERAÇÃO DE MEMÓRIA
          * ==================================================== */
 
         free(A);
