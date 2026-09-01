@@ -1,0 +1,50 @@
+===== EXECUCAO cont2 #1 =====
+Contador inicial: 0
+
+Contador final: 1431347
+
+===== EXECUCAO cont2 #2 =====
+Contador inicial: 0
+
+Contador final: 1305740
+
+===== EXECUCAO cont2 #3 =====
+Contador inicial: 0
+
+Contador final: 1171730
+
+===== EXECUCAO cont2 #4 =====
+Contador inicial: 0
+
+Contador final: 1306585
+
+===== EXECUCAO cont2 #5 =====
+Contador inicial: 0
+
+Contador final: 1235595
+
+===== EXECUCAO cont2 #6 =====
+Contador inicial: 0
+
+Contador final: 1292238
+
+===== EXECUCAO cont2 #7 =====
+Contador inicial: 0
+
+Contador final: 1222249
+
+===== EXECUCAO cont2 #8 =====
+Contador inicial: 0
+
+Contador final: 1681956
+
+===== EXECUCAO cont2 #9 =====
+Contador inicial: 0
+
+Contador final: 1240474
+
+===== EXECUCAO cont2 #10 =====
+Contador inicial: 0
+
+Contador final: 1347679
+

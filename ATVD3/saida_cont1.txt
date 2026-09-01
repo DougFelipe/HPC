@@ -1,0 +1,39 @@
+===== EXECUCAO cont1 #1 =====
+Contador inicial: 0
+Filho 275: contador = 1000000
+Contador inicial: 0
+Filho 276: contador = 1000000
+Contador inicial: 0
+Filho 277: contador = 1000000
+Contador inicial: 0
+Filho 278: contador = 1000000
+Contador inicial: 0
+
+Contador no processo pai: 0
+
+===== EXECUCAO cont1 #2 =====
+Contador inicial: 0
+Filho 280: contador = 1000000
+Contador inicial: 0
+Filho 281: contador = 1000000
+Contador inicial: 0
+Filho 282: contador = 1000000
+Contador inicial: 0
+Filho 283: contador = 1000000
+Contador inicial: 0
+
+Contador no processo pai: 0
+
+===== EXECUCAO cont1 #3 =====
+Contador inicial: 0
+Filho 285: contador = 1000000
+Contador inicial: 0
+Filho 286: contador = 1000000
+Contador inicial: 0
+Filho 287: contador = 1000000
+Contador inicial: 0
+Filho 288: contador = 1000000
+Contador inicial: 0
+
+Contador no processo pai: 0
+

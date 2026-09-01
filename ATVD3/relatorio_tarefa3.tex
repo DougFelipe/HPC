@@ -1,0 +1,62 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\geometry{margin=2.5cm}
+
+\title{Tarefa 3: Contador com Processos e Threads}
+\author{}
+\date{19 de agosto de 2026}
+
+\begin{document}
+
+\maketitle
+
+\section*{Objetivo}
+
+Analisar os programas \texttt{cont1.c} e \texttt{cont2.c}, executar os c\'odigos e explicar o comportamento da vari\'avel \texttt{contador}, identificando os problemas observados e uma solu\c{c}\~ao adequada para cada caso.
+
+\section*{Resultados observados}
+
+No \texttt{cont1.c}, em todas as 3 execu\c{c}\~oes, cada processo filho imprimiu \texttt{1000000}, enquanto o processo pai imprimiu \texttt{0}. Tamb\'em foi observada a repeti\c{c}\~ao da mensagem \texttt{Contador inicial: 0}.
+
+No \texttt{cont2.c}, o valor te\'orico esperado seria \texttt{4000000}, mas os resultados reais foram sempre menores e variaram entre execu\c{c}\~oes.
+
+\begin{center}
+\begin{tabular}{cc}
+\toprule
+Execu\c{c}\~ao & Valor final em \texttt{cont2.c} \\
+\midrule
+1  & 1431347 \\
+2  & 1305740 \\
+3  & 1171730 \\
+4  & 1306585 \\
+5  & 1235595 \\
+6  & 1292238 \\
+7  & 1222249 \\
+8  & 1681956 \\
+9  & 1240474 \\
+10 & 1347679 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{Discuss\~ao}
+
+No \texttt{cont1.c}, o comportamento ocorre porque \texttt{fork()} cria processos com espa\c{c}os de mem\'oria independentes. Cada filho recebe uma c\'opia da vari\'avel \texttt{contador}, faz seus pr\'oprios incrementos e imprime \texttt{1000000}. O processo pai n\~ao compartilha essa mem\'oria e, por isso, permanece com \texttt{0}. A repeti\c{c}\~ao de \texttt{Contador inicial: 0} ocorre por heran\c{c}a do buffer de sa\'ida ap\'os o \texttt{fork()}.
+
+No \texttt{cont2.c}, todas as threads compartilham a mesma vari\'avel global \texttt{contador}. Entretanto, a opera\c{c}\~ao \texttt{contador++} n\~ao \'e at\^omica. Assim, m\'ultiplas threads podem ler e escrever o contador ao mesmo tempo, causando perda de atualiza\c{c}\~oes. Isso caracteriza uma condi\c{c}\~ao de corrida e explica os valores finais incorretos.
+
+\section*{Problemas e solu\c{c}\~oes}
+
+No \texttt{cont1.c}, o problema \'e a aus\^encia de compartilhamento real do contador entre os processos. A solu\c{c}\~ao adequada \'e usar mem\'oria compartilhada ou outro mecanismo de comunica\c{c}\~ao entre processos.
+
+No \texttt{cont2.c}, o problema \'e a falta de sincroniza\c{c}\~ao no acesso \`a vari\'avel compartilhada. A solu\c{c}\~ao adequada \'e proteger a regi\~ao cr\'itica com \texttt{mutex} ou usar opera\c{c}\~oes at\^omicas.
+
+\section*{Conclus\~ao}
+
+Os resultados mostram que processos e threads possuem comportamentos distintos em rela\c{c}\~ao \`a mem\'oria. Em \texttt{cont1.c}, os incrementos n\~ao chegam ao processo pai porque cada processo trabalha com sua pr\'opria c\'opia da vari\'avel. Em \texttt{cont2.c}, a mem\'oria \'e compartilhada, mas a aus\^encia de sincroniza\c{c}\~ao produz resultados incorretos. Portanto, cada modelo exige uma solu\c{c}\~ao espec\'ifica para garantir corretude.
+
+\end{document}
