@@ -1,66 +1,31 @@
+/*
+ * Tarefa 5 - Contagem de numeros primos com OpenMP
+ *
+ * Implementa tres versoes da contagem de primos:
+ * sequencial, OpenMP ingenua (com race condition) e
+ * OpenMP correta com reduction.
+ *
+ * O benchmark compara apenas as versoes corretas.
+ * O laco externo e paralelizado; o teste de primalidade
+ * permanece sequencial.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
 
-/*
- * ============================================================
- * Tarefa 5 - Contagem de numeros primos com OpenMP
- * ============================================================
- *
- * O programa implementa tres versoes da mesma contagem:
- *
- * 1. Sequencial
- * 2. OpenMP ingenua
- *    - possui propositalmente uma race condition;
- * 3. OpenMP correta
- *    - utiliza reduction.
- *
- * O benchmark de desempenho compara somente:
- *
- *     Sequencial x OpenMP com reduction
- *
- * O laco externo, que percorre os candidatos entre 2 e N,
- * e o unico paralelizado.
- *
- * O laco interno do teste de primalidade permanece sequencial.
- *
- * Para evitar tempos muito pequenos em valores baixos de N,
- * cada medicao pode executar varias contagens internamente.
- *
- * O numero de repeticoes internas e calibrado automaticamente
- * para que cada lote de medicao tenha duracao suficientemente
- * grande para omp_get_wtime().
- */
-
-
-/* ============================================================
- * CONFIGURACAO DO EXPERIMENTO
- * ============================================================
- */
-
+/* Configuracao do experimento. */
 #define NUM_THREADS             4
 #define NUM_WARMUPS             3
 #define NUM_MEASUREMENTS        20
 
-/*
- * Duracao minima desejada para cada lote cronometrado.
- *
- * 0.100 s = 100 ms.
- *
- * Isso reduz o impacto da resolucao efetiva do relogio sobre
- * cargas pequenas.
- */
+/* Duracao minima desejada para cada lote cronometrado. */
 #define TARGET_BATCH_SECONDS    0.100
 
-/*
- * Limite de seguranca para a calibracao automatica.
- */
+/* Limite de seguranca da calibracao automatica. */
 #define MAX_INTERNAL_REPETITIONS 1048576
 
-
-/*
- * Valores de N utilizados no experimento.
- */
+/* Valores de N avaliados no experimento. */
 static const int N_VALUES[] = {
     10000,
     100000,
@@ -69,13 +34,7 @@ static const int N_VALUES[] = {
     10000000
 };
 
-
-/*
- * Quantidades conhecidas de primos entre 2 e N.
- *
- * Servem como referencia independente para validar
- * a implementacao sequencial.
- */
+/* Contagens conhecidas usadas na validacao. */
 static const long long EXPECTED_PRIMES[] = {
     1229,
     9592,
@@ -84,74 +43,33 @@ static const long long EXPECTED_PRIMES[] = {
     664579
 };
 
-
 #define NUM_SIZES \
     (sizeof(N_VALUES) / sizeof(N_VALUES[0]))
 
-
-/*
- * Tipo de ponteiro para uma funcao de contagem.
- *
- * Tanto a versao sequencial quanto a paralela correta possuem
- * esta mesma assinatura.
- */
+/* Assinatura comum das funcoes de contagem. */
 typedef long long (*CountFunction)(int);
 
-
-/* ============================================================
- * TESTE DE PRIMALIDADE
- * ============================================================
- */
-
 /*
- * Retorna:
- *
- *     1 -> se value for primo
- *     0 -> caso contrario
- *
- * A mesma funcao e utilizada pelas tres implementacoes.
+ * Verifica se um valor e primo.
+ * Testa apenas divisores impares ate a raiz quadrada implicita.
  */
 static int is_prime(int value)
 {
-    /*
-     * Numeros menores que 2 nao sao primos.
-     */
+    
+    /* Casos basicos e eliminacao imediata de pares. */
     if (value < 2) {
         return 0;
     }
 
-    /*
-     * 2 e o unico primo par.
-     */
     if (value == 2) {
         return 1;
     }
 
-    /*
-     * Qualquer outro numero par pode ser eliminado
-     * imediatamente.
-     */
     if (value % 2 == 0) {
         return 0;
     }
 
-    /*
-     * Testamos somente divisores impares.
-     *
-     * A condicao:
-     *
-     *     divisor <= value / divisor
-     *
-     * equivale a:
-     *
-     *     divisor * divisor <= value
-     *
-     * mas evita multiplicacao potencialmente problematica
-     * e dispensa o uso de sqrt().
-     *
-     * Este laco permanece sequencial mesmo quando a funcao
-     * e chamada dentro de uma regiao OpenMP.
-     */
+    /* Testa apenas divisores impares; value/divisor evita overflow. */
     for (int divisor = 3;
          divisor <= value / divisor;
          divisor += 2) {
@@ -164,18 +82,7 @@ static int is_prime(int value)
     return 1;
 }
 
-
-/* ============================================================
- * VERSAO 1 - SEQUENCIAL
- * ============================================================
- */
-
-/*
- * Baseline do experimento.
- *
- * Percorre todos os candidatos entre 2 e N e conta quantos
- * deles sao primos.
- */
+/* Conta primos entre 2 e n de forma sequencial. */
 static long long count_primes_sequential(int n)
 {
     long long count = 0;
@@ -192,29 +99,10 @@ static long long count_primes_sequential(int n)
     return count;
 }
 
-
-/* ============================================================
- * VERSAO 2 - OPENMP INGENUA
- * ============================================================
- */
-
 /*
- * Implementacao propositalmente incorreta.
- *
- * O laco externo e paralelizado, mas todas as threads
- * compartilham e modificam diretamente "count".
- *
- * A operacao:
- *
- *     ++count
- *
- * nao e atomica.
- *
- * Portanto, atualizacoes podem ser perdidas quando duas ou
- * mais threads acessam o contador simultaneamente.
- *
- * Esta versao existe apenas para demonstrar a race condition
- * e NAO participa da comparacao valida de desempenho.
+ * Versao OpenMP ingenua.
+ * O contador compartilhado e atualizado sem sincronizacao,
+ * produzindo uma race condition proposital.
  */
 static long long count_primes_parallel_naive(int n)
 {
@@ -226,18 +114,7 @@ static long long count_primes_parallel_naive(int n)
          ++candidate) {
 
         if (is_prime(candidate)) {
-
-            /*
-             * Race condition proposital.
-             *
-             * Nao adicionar:
-             *
-             * atomic
-             * critical
-             * reduction
-             *
-             * nesta implementacao.
-             */
+            /* Atualizacao compartilhada sem protecao: race condition. */
             ++count;
         }
     }
@@ -245,17 +122,9 @@ static long long count_primes_parallel_naive(int n)
     return count;
 }
 
-
-/* ============================================================
- * VERSAO 3 - OPENMP CORRETA
- * ============================================================
- */
-
 /*
- * Implementacao paralela utilizada no benchmark.
- *
- * A clausula reduction cria resultados parciais privados
- * para as threads e combina esses resultados ao final.
+ * Versao OpenMP correta.
+ * A reduction combina com seguranca os contadores das threads.
  */
 static long long count_primes_parallel_reduction(int n)
 {
@@ -274,12 +143,7 @@ static long long count_primes_parallel_reduction(int n)
     return count;
 }
 
-
-/* ============================================================
- * VALIDACAO DA FUNCAO DE PRIMALIDADE
- * ============================================================
- */
-
+/* Valida a funcao de primalidade com casos conhecidos. */
 static void validate_is_prime(void)
 {
     struct PrimeTest {
@@ -322,15 +186,7 @@ static void validate_is_prime(void)
     }
 }
 
-
-/* ============================================================
- * NUMERO REAL DE THREADS
- * ============================================================
- */
-
-/*
- * Confirma quantas threads o runtime OpenMP realmente criou.
- */
+/* Retorna o numero de threads criado pelo runtime OpenMP. */
 static int get_actual_thread_count(void)
 {
     int actual_threads = 1;
@@ -347,26 +203,9 @@ static int get_actual_thread_count(void)
     return actual_threads;
 }
 
-
-/* ============================================================
- * EXECUCAO DE UM LOTE
- * ============================================================
- */
-
 /*
- * Executa a mesma funcao varias vezes dentro de uma unica
- * regiao cronometrada.
- *
- * Essa estrategia resolve o problema encontrado anteriormente,
- * no qual N pequeno produzia:
- *
- *     0.000 ms
- *
- * O tempo retornado por esta funcao corresponde ao TEMPO TOTAL
- * do lote.
- *
- * Posteriormente ele sera dividido pelo numero de repeticoes
- * para obter o tempo medio de uma unica contagem.
+ * Executa um lote cronometrado e valida o resultado agregado.
+ * Retorna o tempo total do lote em segundos.
  */
 static double run_timed_batch(
     CountFunction function,
@@ -375,32 +214,19 @@ static double run_timed_batch(
     int repetitions
 )
 {
-    /*
-     * O valor de N e mantido em uma variavel volatile apenas
-     * no harness de benchmark.
-     *
-     * Isso impede que o compilador considere todas as chamadas
-     * repetidas como uma unica computacao invariavel e tente
-     * desloca-la para fora do laco.
-     *
-     * O algoritmo que esta sendo medido nao utiliza volatile.
-     */
+    
+    /* Evita que chamadas repetidas sejam tratadas como trabalho invariavel. */
     volatile int guarded_n = n;
 
     long long checksum = 0;
 
-
     const double start =
         omp_get_wtime();
-
 
     for (int repetition = 0;
          repetition < repetitions;
          ++repetition) {
 
-        /*
-         * A leitura ocorre a cada repeticao.
-         */
         const int current_n =
             guarded_n;
 
@@ -408,19 +234,12 @@ static double run_timed_batch(
             function(current_n);
     }
 
-
     const double end =
         omp_get_wtime();
 
-
-    /*
-     * A validacao acontece DEPOIS do cronometro.
-     *
-     * Portanto, nao interfere no tempo medido.
-     */
+    /* Validacao fora da regiao cronometrada. */
     const long long expected_checksum =
         expected * (long long) repetitions;
-
 
     if (checksum != expected_checksum) {
 
@@ -433,36 +252,12 @@ static double run_timed_batch(
         exit(EXIT_FAILURE);
     }
 
-
     return end - start;
 }
 
-
-/* ============================================================
- * CALIBRACAO DAS REPETICOES INTERNAS
- * ============================================================
- */
-
 /*
- * Descobre automaticamente quantas repeticoes internas devem
- * ser utilizadas para um determinado N.
- *
- * A mesma quantidade sera utilizada tanto na versao sequencial
- * quanto na paralela.
- *
- * Comecamos com:
- *
- *     1 repeticao
- *
- * e dobramos:
- *
- *     1, 2, 4, 8, 16, 32, ...
- *
- * ate que AMBAS as implementacoes tenham um lote com pelo
- * menos TARGET_BATCH_SECONDS.
- *
- * Isso garante que inclusive a versao mais rapida tenha uma
- * duracao suficientemente longa para ser medida.
+ * Define repeticoes internas por duplicacao ate que os lotes
+ * sequencial e paralelo atinjam a duracao minima desejada.
  */
 static int calibrate_internal_repetitions(
     int n,
@@ -481,7 +276,6 @@ static int calibrate_internal_repetitions(
                 repetitions
             );
 
-
         const double omp_elapsed =
             run_timed_batch(
                 count_primes_parallel_reduction,
@@ -490,44 +284,23 @@ static int calibrate_internal_repetitions(
                 repetitions
             );
 
-
-        /*
-         * A calibracao termina somente quando os dois lotes
-         * atingem o tempo minimo desejado.
-         */
         if (seq_elapsed >= TARGET_BATCH_SECONDS &&
             omp_elapsed >= TARGET_BATCH_SECONDS) {
 
             return repetitions;
         }
 
-
-        /*
-         * Protecao contra crescimento indefinido.
-         */
         if (repetitions >=
             MAX_INTERNAL_REPETITIONS / 2) {
 
             return MAX_INTERNAL_REPETITIONS;
         }
 
-
         repetitions *= 2;
     }
 }
 
-
-/* ============================================================
- * AQUECIMENTO
- * ============================================================
- */
-
-/*
- * Os warm-ups utilizam o mesmo tamanho de lote determinado
- * pela calibracao.
- *
- * Eles nao entram nas 20 medicoes oficiais.
- */
+/* Executa aquecimentos usando o mesmo tamanho de lote calibrado. */
 static void run_warmups(
     int n,
     long long expected,
@@ -538,9 +311,7 @@ static void run_warmups(
          i < NUM_WARMUPS;
          ++i) {
 
-        /*
-         * A ordem e alternada tambem durante o aquecimento.
-         */
+        /* Alterna a ordem para reduzir vies de execucao. */
         if (i % 2 == 0) {
 
             (void) run_timed_batch(
@@ -576,23 +347,7 @@ static void run_warmups(
     }
 }
 
-
-/* ============================================================
- * MEDICAO POR EXECUCAO
- * ============================================================
- */
-
-/*
- * Executa um lote e converte seu tempo total no tempo medio
- * de UMA UNICA contagem.
- *
- * Exemplo:
- *
- *     lote = 200 ms
- *     repeticoes = 100
- *
- *     tempo por contagem = 2 ms
- */
+/* Retorna o tempo medio de uma contagem dentro do lote. */
 static double measure_per_execution(
     CountFunction function,
     int n,
@@ -612,12 +367,7 @@ static double measure_per_execution(
            (double) repetitions;
 }
 
-
-/* ============================================================
- * MEDIANA
- * ============================================================
- */
-
+/* Comparador usado pelo qsort na ordenacao das medicoes. */
 static int compare_double(
     const void *a,
     const void *b
@@ -640,13 +390,7 @@ static int compare_double(
     return 0;
 }
 
-
-/*
- * Ordena as medicoes e retorna a mediana.
- *
- * Como temos 20 valores, a mediana sera a media entre
- * os dois valores centrais.
- */
+/* Ordena as medicoes e calcula a mediana. */
 static double calculate_median(
     double values[],
     size_t count
@@ -659,11 +403,9 @@ static double calculate_median(
         compare_double
     );
 
-
     if (count % 2 != 0) {
         return values[count / 2];
     }
-
 
     return (
         values[count / 2 - 1]
@@ -672,40 +414,20 @@ static double calculate_median(
     ) / 2.0;
 }
 
-
-/* ============================================================
- * MAIN
- * ============================================================
- */
-
+/* Coordena validacao, calibracao, benchmark e impressao dos resultados. */
 int main(void)
 {
-    /*
-     * Nao permite que o runtime OpenMP reduza dinamicamente
-     * a quantidade solicitada de threads.
-     */
+    
+    /* Mantem fixo o numero de threads do experimento. */
     omp_set_dynamic(0);
 
-
-    /*
-     * Numero fixo de threads do experimento.
-     */
     omp_set_num_threads(NUM_THREADS);
 
-
-    /*
-     * Valida inicialmente o teste de primalidade.
-     */
+    /* Validacao inicial da logica de primalidade. */
     validate_is_prime();
 
-
-    /*
-     * Confirma que o runtime criou exatamente a quantidade
-     * esperada de threads.
-     */
     const int actual_threads =
         get_actual_thread_count();
-
 
     if (actual_threads != NUM_THREADS) {
 
@@ -720,27 +442,13 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-
-    /*
-     * Armazena os resultados das tres versoes.
-     */
     long long sequential_results[NUM_SIZES];
     long long naive_results[NUM_SIZES];
     long long reduction_results[NUM_SIZES];
 
-
-    /*
-     * Numero de repeticoes internas determinado
-     * individualmente para cada N.
-     */
     int internal_repetitions[NUM_SIZES];
 
-
-    /* ========================================================
-     * ETAPA 1 - VALIDACAO FUNCIONAL
-     * ========================================================
-     */
-
+    /* Valida as tres versoes para cada N. */
     for (size_t i = 0;
          i < NUM_SIZES;
          ++i) {
@@ -748,27 +456,15 @@ int main(void)
         const int n =
             N_VALUES[i];
 
-
-        /*
-         * As tres versoes sao executadas fora de qualquer
-         * benchmark oficial.
-         */
         sequential_results[i] =
             count_primes_sequential(n);
-
 
         naive_results[i] =
             count_primes_parallel_naive(n);
 
-
         reduction_results[i] =
             count_primes_parallel_reduction(n);
 
-
-        /*
-         * Primeiro, validamos a implementacao sequencial
-         * usando a contagem matematicamente conhecida.
-         */
         if (sequential_results[i] !=
             EXPECTED_PRIMES[i]) {
 
@@ -784,11 +480,6 @@ int main(void)
             return EXIT_FAILURE;
         }
 
-
-        /*
-         * Depois, a versao paralela correta precisa produzir
-         * exatamente o mesmo resultado.
-         */
         if (reduction_results[i] !=
             sequential_results[i]) {
 
@@ -803,12 +494,7 @@ int main(void)
         }
     }
 
-
-    /* ========================================================
-     * CABECALHO
-     * ========================================================
-     */
-
+    /* Cabecalho do experimento. */
     printf(
         "============================================================\n"
     );
@@ -820,7 +506,6 @@ int main(void)
     printf(
         "============================================================\n\n"
     );
-
 
     printf(
         "Threads      : %d\n",
@@ -850,12 +535,7 @@ int main(void)
         TARGET_BATCH_SECONDS * 1000.0
     );
 
-
-    /* ========================================================
-     * TABELA 1 - RESULT VALIDATION
-     * ========================================================
-     */
-
+    /* Tabela 1: validacao dos resultados. */
     printf(
         "\n------------------------------------------------------------\n"
     );
@@ -868,7 +548,6 @@ int main(void)
         "------------------------------------------------------------\n\n"
     );
 
-
     printf(
         "%-13s %-13s %-14s %-15s %-14s\n",
         "N",
@@ -878,14 +557,11 @@ int main(void)
         "Naive Status"
     );
 
-
     printf(
         "-----------------------------------------------------------------------\n"
     );
 
-
     int naive_match_detected = 0;
-
 
     for (size_t i = 0;
          i < NUM_SIZES;
@@ -895,9 +571,7 @@ int main(void)
             naive_results[i] ==
             sequential_results[i];
 
-
         const char *status;
-
 
         if (naive_matches) {
 
@@ -910,7 +584,6 @@ int main(void)
             status = "INCORRECT";
         }
 
-
         printf(
             "%-13d %-13lld %-14lld %-15lld %-14s\n",
             N_VALUES[i],
@@ -920,7 +593,6 @@ int main(void)
             status
         );
     }
-
 
     if (naive_match_detected) {
 
@@ -933,12 +605,7 @@ int main(void)
         );
     }
 
-
-    /* ========================================================
-     * TABELA 2 - PERFORMANCE
-     * ========================================================
-     */
-
+    /* Tabela 2: desempenho das implementacoes validas. */
     printf(
         "\n\n------------------------------------------------------------\n"
     );
@@ -951,11 +618,6 @@ int main(void)
         "------------------------------------------------------------\n\n"
     );
 
-
-    /*
-     * A coluna Reps informa quantas execucoes internas foram
-     * utilizadas em cada lote de temporizacao.
-     */
     printf(
         "%-12s %-11s %-8s %-13s %-13s %-10s\n",
         "N",
@@ -966,11 +628,9 @@ int main(void)
         "Speedup"
     );
 
-
     printf(
         "---------------------------------------------------------------------\n"
     );
-
 
     for (size_t i = 0;
          i < NUM_SIZES;
@@ -979,36 +639,23 @@ int main(void)
         const int n =
             N_VALUES[i];
 
-
         const long long expected =
             sequential_results[i];
 
-
-        /*
-         * Determina automaticamente o numero apropriado
-         * de repeticoes internas.
-         */
         internal_repetitions[i] =
             calibrate_internal_repetitions(
                 n,
                 expected
             );
 
-
         const int repetitions =
             internal_repetitions[i];
 
-
-        /*
-         * Depois da calibracao sao realizados os tres
-         * warm-ups previstos na metodologia.
-         */
         run_warmups(
             n,
             expected,
             repetitions
         );
-
 
         double sequential_times[
             NUM_MEASUREMENTS
@@ -1018,17 +665,7 @@ int main(void)
             NUM_MEASUREMENTS
         ];
 
-
-        /*
-         * Sao realizadas 20 medicoes.
-         *
-         * A ordem e alternada:
-         *
-         *     SEQ -> OMP
-         *     OMP -> SEQ
-         *     SEQ -> OMP
-         *     ...
-         */
+        /* Alterna SEQ->OMP e OMP->SEQ entre as 20 medicoes. */
         for (int measurement = 0;
              measurement < NUM_MEASUREMENTS;
              ++measurement) {
@@ -1042,7 +679,6 @@ int main(void)
                         expected,
                         repetitions
                     );
-
 
                 parallel_times[measurement] =
                     measure_per_execution(
@@ -1062,7 +698,6 @@ int main(void)
                         repetitions
                     );
 
-
                 sequential_times[measurement] =
                     measure_per_execution(
                         count_primes_sequential,
@@ -1073,16 +708,12 @@ int main(void)
             }
         }
 
-
-        /*
-         * Mediana dos 20 tempos por execucao.
-         */
+        /* Medianas das 20 medicoes por implementacao. */
         const double seq_median =
             calculate_median(
                 sequential_times,
                 NUM_MEASUREMENTS
             );
-
 
         const double omp_median =
             calculate_median(
@@ -1090,14 +721,6 @@ int main(void)
                 NUM_MEASUREMENTS
             );
 
-
-        /*
-         * Como os lotes agora possuem duracao adequada,
-         * nao devemos obter zero no denominador.
-         *
-         * Ainda assim, a verificacao protege contra um
-         * resultado numericamente invalido.
-         */
         if (seq_median <= 0.0 ||
             omp_median <= 0.0) {
 
@@ -1110,32 +733,17 @@ int main(void)
             return EXIT_FAILURE;
         }
 
-
-        /*
-         * Speedup:
-         *
-         *             T_seq
-         *     S = -------------
-         *             T_omp
-         */
+        /* Speedup = tempo sequencial / tempo OpenMP. */
         const double speedup =
             seq_median /
             omp_median;
 
-
-        /*
-         * omp_get_wtime() trabalha em segundos.
-         *
-         * A conversao para milissegundos ocorre apenas
-         * para apresentacao.
-         */
+        /* Conversao de segundos para milissegundos. */
         const double seq_ms =
             seq_median * 1000.0;
 
-
         const double omp_ms =
             omp_median * 1000.0;
-
 
         printf(
             "%-12d %-11lld %-8d %-13.3f %-13.3f %.2fx\n",
@@ -1147,7 +755,6 @@ int main(void)
             speedup
         );
     }
-
 
     return EXIT_SUCCESS;
 }
