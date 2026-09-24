@@ -1,0 +1,897 @@
+\chapter{Atividade 3 -- Processos, threads, concorrência e compartilhamento de memória}
+\label{chap:atvd03}
+
+\section{Enunciado da tarefa}
+\label{sec:atvd03-enunciado}
+
+\begin{quote}
+Analise e execute os códigos disponibilizados e explique o comportamento observado nos valores de saída da variável \texttt{contador}.
+
+Discuta o que acontece em cada código, identificando possíveis problemas, causas dos comportamentos observados e uma solução adequada para cada caso.
+
+Em seguida, discuta os conceitos de processo e thread, destacando as principais diferenças entre eles, especialmente em relação a compartilhamento de memória e execução concorrente.
+\end{quote}
+
+\section{Objetivos e requisitos}
+\label{sec:atvd03-objetivos}
+
+A atividade teve como objetivo comparar, por meio de dois programas curtos em C, o comportamento de uma variável global quando a execução concorrente é realizada com processos e quando é realizada com threads.
+
+O elemento observado nos dois casos foi a variável global \texttt{contador}. Em ambos os programas, são criadas quatro unidades de execução, e cada uma realiza um milhão de incrementos.
+
+Os objetivos específicos considerados foram:
+
+\begin{itemize}
+    \item analisar o comportamento de \texttt{contador} quando processos filhos são criados com \texttt{fork()};
+    \item analisar o comportamento de \texttt{contador} quando threads são criadas com \texttt{pthread\_create()};
+    \item explicar por que os incrementos realizados pelos processos filhos não alteram o contador do processo pai;
+    \item explicar por que as threads acessam a mesma variável global;
+    \item identificar a condição de corrida existente no programa com threads;
+    \item distinguir isolamento de memória, compartilhamento de memória e execução concorrente;
+    \item propor soluções adequadas para cada caso, sem alterar a finalidade didática dos códigos fornecidos.
+\end{itemize}
+
+Os códigos analisados foram mantidos como programas demonstrativos. Assim, o objetivo principal não foi otimizar desempenho, mas compreender o modelo de memória associado a processos e threads.
+
+\section{Fundamentação conceitual}
+\label{sec:atvd03-fundamentacao}
+
+\subsection{Processos}
+
+Um processo é uma instância de um programa em execução. Cada processo possui seu próprio espaço de endereçamento virtual, contendo, entre outras regiões:
+
+\begin{itemize}
+    \item segmento de código;
+    \item variáveis globais;
+    \item heap;
+    \item pilha de execução;
+    \item descritores de arquivos e demais recursos associados pelo sistema operacional.
+\end{itemize}
+
+Quando um processo é criado por meio de \texttt{fork()}, o processo filho inicia como uma cópia lógica do processo pai.
+
+Essa cópia inclui o valor das variáveis no instante da criação do filho. Entretanto, pai e filho não passam a compartilhar automaticamente as mesmas posições de memória. Após o \texttt{fork()}, cada processo executa em seu próprio espaço de endereçamento.
+
+Consequentemente, se um processo filho modifica uma variável global, essa modificação ocorre em sua própria cópia da variável. O processo pai não vê essa alteração.
+
+\subsection{Threads}
+
+Uma thread é uma linha de execução dentro de um processo.
+
+Diferentemente dos processos, threads pertencentes ao mesmo processo compartilham o mesmo espaço de endereçamento. Isso significa que variáveis globais, memória alocada dinamicamente e outros dados do processo podem ser acessados por todas as threads.
+
+Cada thread, porém, possui elementos próprios, como:
+
+\begin{itemize}
+    \item contador de programa;
+    \item registradores;
+    \item pilha de execução;
+    \item estado de escalonamento.
+\end{itemize}
+
+Portanto, threads facilitam a comunicação por memória compartilhada, mas exigem cuidado quando múltiplas threads leem e escrevem os mesmos dados.
+
+\subsection{Concorrência}
+
+Concorrência ocorre quando duas ou mais unidades de execução possuem progresso sobreposto no tempo.
+
+Em uma máquina com múltiplos núcleos, esse progresso pode ser efetivamente paralelo. Em uma máquina com um único núcleo, o sistema operacional pode alternar rapidamente entre unidades de execução, produzindo interleaving.
+
+Nos dois programas desta atividade, a concorrência aparece de formas distintas:
+
+\begin{itemize}
+    \item no programa com processos, existem quatro processos filhos executando laços de incremento independentes;
+    \item no programa com threads, existem quatro threads executando laços de incremento sobre a mesma variável global.
+\end{itemize}
+
+\subsection{Condição de corrida}
+
+Uma condição de corrida ocorre quando o resultado de um programa depende da ordem não controlada em que diferentes unidades de execução acessam dados compartilhados.
+
+A operação
+
+\begin{verbatim}
+contador++;
+\end{verbatim}
+
+parece uma única operação no código-fonte, mas conceitualmente envolve três etapas:
+
+\begin{enumerate}
+    \item ler o valor atual de \texttt{contador};
+    \item somar uma unidade;
+    \item gravar o novo valor em \texttt{contador}.
+\end{enumerate}
+
+Se duas threads executarem essas etapas simultaneamente, ambas podem ler o mesmo valor antigo e escrever resultados que sobrescrevem atualizações feitas pela outra thread.
+
+Esse fenômeno é chamado de atualização perdida.
+
+\section{Interpretação didática da tarefa}
+\label{sec:atvd03-interpretacao}
+
+A atividade utiliza deliberadamente dois programas pequenos para isolar o conceito observado.
+
+No primeiro programa, o foco é mostrar que a criação de processos não implica compartilhamento automático de variáveis globais. Embora os filhos executem o mesmo código e incrementem uma variável chamada \texttt{contador}, cada um manipula uma cópia privada.
+
+No segundo programa, o foco é mostrar o caso oposto: threads compartilham a variável global, mas esse compartilhamento não garante correção. Como não há sincronização, as atualizações concorrentes sobre \texttt{contador} podem ser perdidas.
+
+A atividade, portanto, não deve ser interpretada como um benchmark de desempenho. O ponto central é semântico:
+
+\begin{center}
+\begin{tabular}{|p{0.28\textwidth}|p{0.28\textwidth}|p{0.34\textwidth}|}
+\hline
+\textbf{Mecanismo} & \textbf{Memória} & \textbf{Efeito sobre \texttt{contador}} \\
+\hline
+Processos com \texttt{fork()} &
+Espaços separados &
+Cada filho incrementa sua própria cópia. \\
+\hline
+Threads POSIX &
+Espaço compartilhado &
+Todas acessam a mesma variável, mas sem sincronização. \\
+\hline
+\end{tabular}
+\end{center}
+
+Essa diferença é uma base importante para Computação de Alto Desempenho, pois influencia diretamente a forma de decompor problemas, compartilhar dados e preservar a correção.
+
+\section{Modelagem da solução}
+\label{sec:atvd03-modelagem}
+
+\subsection{Estrutura geral}
+
+A atividade foi organizada em dois programas independentes.
+
+O primeiro programa, apresentado no Código~\ref{lst:atvd03-cont1}, utiliza processos:
+
+\begin{verbatim}
+processo pai
+ |
+ +-- fork() --> filho 1 --> contador local++
+ |
+ +-- fork() --> filho 2 --> contador local++
+ |
+ +-- fork() --> filho 3 --> contador local++
+ |
+ +-- fork() --> filho 4 --> contador local++
+ |
+ +-- wait() por todos os filhos
+ |
+ +-- imprime contador do pai
+\end{verbatim}
+
+O segundo programa, apresentado no Código~\ref{lst:atvd03-cont2}, utiliza threads:
+
+\begin{verbatim}
+processo principal
+ |
+ +-- pthread_create() --> thread 1
+ |
+ +-- pthread_create() --> thread 2
+ |
+ +-- pthread_create() --> thread 3
+ |
+ +-- pthread_create() --> thread 4
+ |
+ +-- todas executam incrementar()
+ |
+ +-- todas acessam o mesmo contador global
+ |
+ +-- pthread_join() por todas as threads
+ |
+ +-- imprime contador final
+\end{verbatim}
+
+Em ambos os casos, as constantes utilizadas são:
+
+\begin{itemize}
+    \item quatro unidades de execução;
+    \item um milhão de incrementos por unidade.
+\end{itemize}
+
+Assim, se todos os incrementos fossem acumulados em um único contador compartilhado e corretamente sincronizado, o valor esperado seria:
+
+\begin{equation}
+    4 \times 1\,000\,000
+    =
+    4\,000\,000.
+    \label{eq:atvd03-contador-esperado}
+\end{equation}
+
+Esse valor, entretanto, não é o resultado esperado do programa com processos, pois nesse caso o contador não é compartilhado entre pai e filhos.
+
+\subsection{Principais funções e componentes}
+
+Os principais componentes dos programas são apresentados na Tabela~\ref{tab:atvd03-componentes}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Principais componentes analisados na Atividade 3.}
+    \label{tab:atvd03-componentes}
+    \begin{tabular}{p{0.32\textwidth}|p{0.58\textwidth}}
+        \hline
+        \textbf{Componente} & \textbf{Responsabilidade} \\
+        \hline
+        \texttt{contador} &
+        Variável global usada para evidenciar compartilhamento ou isolamento de memória. \\
+        \hline
+        \texttt{fork()} &
+        Cria processos filhos no primeiro programa. \\
+        \hline
+        \texttt{wait(NULL)} &
+        Faz o processo pai aguardar a finalização dos filhos. \\
+        \hline
+        \texttt{getpid()} &
+        Identifica o processo filho que imprimiu determinado resultado. \\
+        \hline
+        \texttt{pthread\_create()} &
+        Cria threads no segundo programa. \\
+        \hline
+        \texttt{incrementar()} &
+        Rotina executada por cada thread, responsável por incrementar \texttt{contador}. \\
+        \hline
+        \texttt{pthread\_join()} &
+        Faz a thread principal aguardar a finalização das threads criadas. \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\section{Decisões de projeto e trade-offs}
+\label{sec:atvd03-decisoes}
+
+\subsection{Uso de variável global}
+
+A variável \texttt{contador} foi declarada globalmente nos dois programas.
+
+Essa escolha torna o experimento mais direto: a mesma forma de declaração produz comportamentos diferentes dependendo do modelo de execução adotado.
+
+No programa com processos, a variável global pertence ao espaço de memória de cada processo.
+
+No programa com threads, a variável global pertence ao processo e é compartilhada pelas threads.
+
+\subsection{Quatro unidades de execução}
+
+O uso de quatro processos e quatro threads facilita a comparação entre os programas.
+
+Em ambos os casos, há quatro unidades concorrentes executando o mesmo trabalho lógico.
+
+Com isso, a diferença observada não está na quantidade de trabalho solicitada, mas na forma como a memória é tratada.
+
+\subsection{Um milhão de incrementos}
+
+O valor de \texttt{INCREMENTOS} foi definido como um milhão.
+
+Esse número é suficientemente grande para tornar perceptível o efeito da condição de corrida no programa com threads. Com poucas iterações, uma execução poderia ocasionalmente produzir um resultado próximo do esperado, mas isso não demonstraria de forma clara o problema.
+
+\subsection{Ausência de sincronização no programa com threads}
+
+O programa com threads não utiliza \texttt{mutex}, \texttt{atomic} ou outra forma de sincronização.
+
+Essa decisão preserva a finalidade didática do código: evidenciar que o compartilhamento de memória exige controle explícito quando há escrita concorrente.
+
+Como trade-off, o resultado final do contador deixa de ser determinístico e não pode ser tratado como correto.
+
+\subsection{Ausência de memória compartilhada explícita no programa com processos}
+
+O programa com processos também não utiliza memória compartilhada, \emph{pipes}, arquivos temporários ou outro mecanismo de comunicação entre processos.
+
+Essa decisão isola o comportamento padrão de \texttt{fork()}: cada processo filho possui sua própria cópia da variável global.
+
+Se o objetivo fosse somar os incrementos dos filhos em um resultado comum, seria necessário acrescentar algum mecanismo de comunicação ou compartilhamento.
+
+\section{Representação estrutural da implementação}
+\label{sec:atvd03-estrutura}
+
+A Figura~\ref{fig:atvd03-processos} resume o caso com processos.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}{0.86\textwidth}
+\begin{verbatim}
+Antes do fork:
+
+    Pai
+    contador = 0
+
+Depois dos fork():
+
+    Pai                 Filho 1             Filho 2
+    contador = 0        contador = 0        contador = 0
+         |                   |                   |
+         |             incrementa           incrementa
+         |                   |                   |
+         |             contador = 1000000   contador = 1000000
+         |
+         +-- wait()
+         |
+         v
+    imprime contador = 0
+\end{verbatim}
+    \end{minipage}
+    \caption{Representação estrutural simplificada do programa com processos.}
+    \label{fig:atvd03-processos}
+\end{figure}
+
+A Figura~\ref{fig:atvd03-threads} resume o caso com threads.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}{0.86\textwidth}
+\begin{verbatim}
+Processo unico
+
+    contador compartilhado
+             ^
+             |
+   +---------+---------+---------+
+   |         |         |         |
+ Thread 1 Thread 2 Thread 3 Thread 4
+   |         |         |         |
+   +-- contador++ concorrente ---+
+
+Resultado:
+    valor final depende da intercalacao das operacoes
+\end{verbatim}
+    \end{minipage}
+    \caption{Representação estrutural simplificada do programa com threads.}
+    \label{fig:atvd03-threads}
+\end{figure}
+
+\section{Fluxo de execução}
+\label{sec:atvd03-fluxo}
+
+\subsection{Fluxo do programa com processos}
+
+O fluxo do programa \texttt{cont1.c} é:
+
+\begin{verbatim}
+INICIO
+  |
+  v
+contador global recebe 0
+  |
+  v
+imprime contador inicial
+  |
+  v
+para i = 0 ate 3
+  |
+  +-- fork()
+        |
+        +-- se filho:
+        |      incrementar contador local 1000000 vezes
+        |      imprimir PID e contador local
+        |      encerrar filho
+        |
+        +-- se pai:
+               continuar criando filhos
+  |
+  v
+pai executa wait() quatro vezes
+  |
+  v
+pai imprime seu contador
+  |
+  v
+FIM
+\end{verbatim}
+
+O ponto central desse fluxo é que o pai aguarda os filhos, mas não recebe automaticamente as alterações feitas no contador de cada um.
+
+\subsection{Fluxo do programa com threads}
+
+O fluxo do programa \texttt{cont2.c} é:
+
+\begin{verbatim}
+INICIO
+  |
+  v
+contador global recebe 0
+  |
+  v
+imprime contador inicial
+  |
+  v
+cria 4 threads com pthread_create()
+  |
+  v
+cada thread executa incrementar()
+  |
+  v
+todas executam contador++ sobre a mesma variavel
+  |
+  v
+thread principal aguarda com pthread_join()
+  |
+  v
+imprime contador final
+  |
+  v
+FIM
+\end{verbatim}
+
+Nesse caso, o ponto central é que todas as threads escrevem na mesma variável sem sincronização.
+
+\section{Metodologia experimental}
+\label{sec:atvd03-metodologia}
+
+\subsection{Ambiente de execução}
+
+Os arquivos da atividade registram os comandos de compilação conceituais:
+
+\begin{verbatim}
+gcc cont1.c -o cont1
+gcc cont2.c -o cont2 -pthread
+\end{verbatim}
+
+O primeiro programa depende das interfaces POSIX \texttt{fork()} e \texttt{wait()}. O segundo depende da biblioteca POSIX Threads.
+
+Nesta consolidação do relatório, foram utilizados os códigos-fonte e as saídas já presentes no diretório da atividade. O objetivo foi documentar o comportamento observado, não refazer um benchmark temporal.
+
+\subsection{Configuração das medições}
+
+Não houve medição de tempo nesta atividade.
+
+A validação experimental consistiu em executar os programas e observar os valores impressos para \texttt{contador}.
+
+Foram considerados:
+
+\begin{itemize}
+    \item três execuções registradas do programa com processos;
+    \item dez execuções registradas do programa com threads.
+\end{itemize}
+
+As execuções do programa com processos foram usadas para confirmar que o contador do processo pai permanece em zero.
+
+As execuções do programa com threads foram usadas para evidenciar que o contador final varia e fica abaixo do valor lógico esperado de \(4\,000\,000\), devido a atualizações perdidas.
+
+\section{Código-fonte desenvolvido}
+\label{sec:atvd03-codigo}
+
+\subsection{Programa com processos}
+
+\lstinputlisting[
+    style=codigoC,
+    caption={Código-fonte da Atividade 3 com processos.},
+    label={lst:atvd03-cont1}
+]{../ATVD3/cont1.c}
+
+\subsection{Programa com threads}
+
+\lstinputlisting[
+    style=codigoC,
+    caption={Código-fonte da Atividade 3 com threads.},
+    label={lst:atvd03-cont2}
+]{../ATVD3/cont2.c}
+
+\section{Validação da implementação}
+\label{sec:atvd03-validacao}
+
+\subsection{Validação do programa com processos}
+
+No programa com processos, cada filho realiza exatamente:
+
+\begin{equation}
+    1\,000\,000
+\end{equation}
+
+incrementos em sua própria cópia de \texttt{contador}.
+
+Assim, espera-se que cada filho imprima:
+
+\begin{equation}
+    \texttt{contador} = 1\,000\,000.
+\end{equation}
+
+Como o pai não compartilha essa variável com os filhos, espera-se que o processo pai imprima:
+
+\begin{equation}
+    \texttt{contador} = 0.
+\end{equation}
+
+As três execuções registradas confirmaram esse comportamento.
+
+\subsection{Validação do programa com threads}
+
+No programa com threads, se os incrementos fossem executados de forma atomicamente correta sobre o contador compartilhado, o resultado esperado seria:
+
+\begin{equation}
+    4\,000\,000.
+\end{equation}
+
+Entretanto, o código utiliza:
+
+\begin{verbatim}
+contador++;
+\end{verbatim}
+
+sem exclusão mútua ou operação atômica.
+
+Portanto, o resultado final não é deterministicamente igual a \(4\,000\,000\).
+
+As saídas registradas confirmam que o valor final varia entre execuções e permanece abaixo do valor esperado.
+
+\subsection{Observação sobre a impressão inicial}
+
+Nas saídas registradas do programa com processos, a linha
+
+\begin{verbatim}
+Contador inicial: 0
+\end{verbatim}
+
+aparece mais de uma vez.
+
+Isso não significa que o código tenha executado o trecho inicial várias vezes antes de criar os filhos. O \texttt{printf()} ocorre antes do \texttt{fork()}.
+
+A repetição pode ocorrer quando a saída padrão está sendo redirecionada ou bufferizada. O conteúdo ainda presente no buffer de saída pode ser copiado para os processos filhos durante o \texttt{fork()} e depois descarregado por cada processo.
+
+Esse detalhe reforça outro aspecto importante da criação de processos: além das variáveis, estados associados à biblioteca de E/S também podem ser duplicados no momento da criação do filho.
+
+\section{Resultados experimentais}
+\label{sec:atvd03-resultados}
+
+\subsection{Resultados do programa com processos}
+
+Nas três execuções registradas, cada processo filho apresentou contador igual a um milhão, e o processo pai apresentou contador igual a zero.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Resultados observados no programa com processos.}
+    \label{tab:atvd03-processos-resultados}
+    \begin{tabular}{c|c|c}
+        \hline
+        Execução & Contador dos filhos & Contador no pai \\
+        \hline
+        1 & \(1\,000\,000\) em cada filho & 0 \\
+        2 & \(1\,000\,000\) em cada filho & 0 \\
+        3 & \(1\,000\,000\) em cada filho & 0 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+O resultado mostra que os filhos executam corretamente seu laço local, mas essas alterações não são refletidas no processo pai.
+
+\subsection{Resultados do programa com threads}
+
+Nas dez execuções registradas, o contador final variou conforme apresentado na Tabela~\ref{tab:atvd03-threads-resultados}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Resultados observados no programa com threads.}
+    \label{tab:atvd03-threads-resultados}
+    \begin{tabular}{c|r}
+        \hline
+        Execução & Contador final \\
+        \hline
+        1 & 1\,431\,347 \\
+        2 & 1\,305\,740 \\
+        3 & 1\,171\,730 \\
+        4 & 1\,306\,585 \\
+        5 & 1\,235\,595 \\
+        6 & 1\,292\,238 \\
+        7 & 1\,222\,249 \\
+        8 & 1\,681\,956 \\
+        9 & 1\,240\,474 \\
+        10 & 1\,347\,679 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+O menor valor registrado foi:
+
+\begin{equation}
+    1\,171\,730,
+\end{equation}
+
+e o maior foi:
+
+\begin{equation}
+    1\,681\,956.
+\end{equation}
+
+Todos os valores ficaram abaixo de:
+
+\begin{equation}
+    4\,000\,000.
+\end{equation}
+
+Isso evidencia perda de atualizações durante a execução concorrente.
+
+\section{Visualização dos resultados}
+\label{sec:atvd03-visualizacao}
+
+O contraste entre os dois programas pode ser resumido por:
+
+\begin{center}
+\fbox{
+\begin{minipage}{0.86\textwidth}
+\centering
+\textbf{Processos}
+
+\vspace{0.2cm}
+
+\[
+\text{filho}_i:
+\quad
+\texttt{contador}=1\,000\,000
+\]
+
+\[
+\text{pai}:
+\quad
+\texttt{contador}=0
+\]
+
+\vspace{0.2cm}
+
+Memória privada por processo.
+
+\vspace{0.5cm}
+
+\textbf{Threads}
+
+\vspace{0.2cm}
+
+\[
+\text{esperado com sincronização}
+=
+4\,000\,000
+\]
+
+\[
+\text{observado}
+\in
+[1\,171\,730,\ 1\,681\,956]
+\]
+
+\vspace{0.2cm}
+
+Memória compartilhada com condição de corrida.
+\end{minipage}
+}
+\end{center}
+
+Uma forma textual de visualizar o problema das threads é:
+
+\begin{verbatim}
+Valor inicial: contador = 10
+
+Thread A le contador = 10
+Thread B le contador = 10
+
+Thread A calcula 11
+Thread B calcula 11
+
+Thread A grava 11
+Thread B grava 11
+
+Resultado final: 11
+Incrementos realizados: 2
+Incrementos preservados: 1
+\end{verbatim}
+
+Esse exemplo simplificado mostra por que o resultado final pode ficar muito abaixo de quatro milhões.
+
+\section{Análise e discussão}
+\label{sec:atvd03-discussao}
+
+\subsection{Comportamento do programa com processos}
+
+O programa \texttt{cont1.c} cria quatro processos filhos.
+
+Cada filho executa um laço com um milhão de incrementos e imprime seu próprio valor de \texttt{contador}.
+
+Como cada filho possui uma cópia independente da variável global, todos os filhos conseguem chegar ao valor:
+
+\begin{equation}
+    1\,000\,000.
+\end{equation}
+
+O pai, entretanto, nunca incrementa sua própria cópia de \texttt{contador}. Ele apenas cria filhos e aguarda sua finalização.
+
+Portanto, o resultado:
+
+\begin{equation}
+    \texttt{contador no processo pai} = 0
+\end{equation}
+
+é o comportamento correto para esse código.
+
+Não há, nesse caso, uma condição de corrida sobre \texttt{contador}, porque os processos não estão escrevendo na mesma posição de memória.
+
+\subsection{Problema conceitual no programa com processos}
+
+O problema do primeiro programa não é erro de sincronização.
+
+O problema é de expectativa: se o objetivo fosse obter no pai a soma dos incrementos realizados pelos filhos, o programa atual não fornece comunicação entre processos.
+
+O valor esperado de quatro milhões só faria sentido se os filhos atualizassem um estado comum ou enviassem seus resultados ao pai.
+
+Soluções adequadas seriam:
+
+\begin{itemize}
+    \item utilizar memória compartilhada entre processos;
+    \item utilizar \emph{pipes} para cada filho enviar seu resultado ao pai;
+    \item utilizar arquivos ou outro mecanismo de comunicação;
+    \item fazer cada filho retornar uma contribuição e o pai agregá-la por IPC apropriado.
+\end{itemize}
+
+Como os filhos são processos independentes, a agregação precisa ser explícita.
+
+\subsection{Comportamento do programa com threads}
+
+O programa \texttt{cont2.c} cria quatro threads dentro do mesmo processo.
+
+Todas executam a função \texttt{incrementar()} e todas acessam a mesma variável global.
+
+Nesse caso, se cada incremento fosse preservado, o resultado deveria ser:
+
+\begin{equation}
+    4 \times 1\,000\,000
+    =
+    4\,000\,000.
+\end{equation}
+
+Entretanto, a ausência de sincronização faz com que múltiplas threads executem simultaneamente a sequência leitura-soma-escrita.
+
+Como resultado, parte dos incrementos se perde.
+
+Esse comportamento explica por que as execuções registradas produziram valores como:
+
+\begin{equation}
+    1\,431\,347,\quad
+    1\,305\,740,\quad
+    1\,171\,730.
+\end{equation}
+
+Os valores não são iguais entre si porque a ordem de escalonamento das threads pode mudar a cada execução.
+
+\subsection{Problema conceitual no programa com threads}
+
+O problema do segundo programa é uma condição de corrida.
+
+Ao contrário do caso com processos, as threads realmente compartilham a variável. O erro surge justamente porque a escrita concorrente não é controlada.
+
+Soluções adequadas seriam:
+
+\begin{itemize}
+    \item proteger o incremento com \texttt{pthread\_mutex\_lock()} e \texttt{pthread\_mutex\_unlock()};
+    \item utilizar uma operação atômica para o incremento;
+    \item fazer cada thread acumular em uma variável local e somar os quatro resultados ao final;
+    \item utilizar primitivas de redução em modelos de programação que as ofereçam, como OpenMP.
+\end{itemize}
+
+Para esse caso específico, a solução com acumuladores locais tende a ser mais adequada conceitualmente do que proteger cada incremento individual, pois evita um milhão de sincronizações por thread.
+
+O modelo seria:
+
+\begin{verbatim}
+Thread 1 calcula local_1 = 1000000
+Thread 2 calcula local_2 = 1000000
+Thread 3 calcula local_3 = 1000000
+Thread 4 calcula local_4 = 1000000
+
+Thread principal soma:
+contador = local_1 + local_2 + local_3 + local_4
+\end{verbatim}
+
+Esse padrão preserva a correção e reduz o custo de sincronização.
+
+\subsection{Comparação entre processos e threads}
+
+A Tabela~\ref{tab:atvd03-comparacao} resume as diferenças observadas.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparação conceitual entre processos e threads na atividade.}
+    \label{tab:atvd03-comparacao}
+    \begin{tabular}{p{0.28\textwidth}|p{0.28\textwidth}|p{0.28\textwidth}}
+        \hline
+        \textbf{Aspecto} & \textbf{Processos} & \textbf{Threads} \\
+        \hline
+        Criação &
+        \texttt{fork()} &
+        \texttt{pthread\_create()} \\
+        \hline
+        Memória global &
+        Copiada para cada processo &
+        Compartilhada no mesmo processo \\
+        \hline
+        Comunicação pelo contador &
+        Não ocorre automaticamente &
+        Ocorre, mas sem controle \\
+        \hline
+        Problema principal &
+        Falta de comunicação entre processos &
+        Condição de corrida \\
+        \hline
+        Resultado observado &
+        Pai permanece com contador 0 &
+        Contador final varia e fica abaixo de 4 milhões \\
+        \hline
+        Solução típica &
+        IPC ou memória compartilhada explícita &
+        Mutex, operação atômica ou acumulação local \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\section{Limitações e ameaças à validade}
+\label{sec:atvd03-limitacoes}
+
+Os resultados devem ser interpretados dentro do escopo demonstrativo da atividade.
+
+Primeiramente, os programas não medem tempo de execução. Portanto, não é possível concluir, a partir desta atividade, que processos ou threads são mais rápidos para uma aplicação geral.
+
+Em segundo lugar, o programa com threads possui comportamento não determinístico. Os valores registrados demonstram a condição de corrida, mas uma nova execução pode produzir outros valores.
+
+Além disso, o comportamento da impressão inicial no programa com processos pode variar conforme a saída esteja ligada ao terminal ou redirecionada para arquivo. A repetição da linha inicial está associada ao estado do buffer de saída no momento do \texttt{fork()}.
+
+Outra limitação é que o programa com processos não utiliza mecanismos reais de comunicação entre processos. Assim, ele demonstra isolamento de memória, mas não compara diferentes estratégias de IPC.
+
+Por fim, o programa com threads não implementa uma versão corrigida com \texttt{mutex}, operação atômica ou acumuladores privados. A discussão da solução é conceitual, conforme solicitado pelo enunciado.
+
+\section{Conclusões da atividade}
+\label{sec:atvd03-conclusao}
+
+A atividade demonstrou que processos e threads oferecem modelos de memória distintos.
+
+No programa com processos, cada filho criado por \texttt{fork()} recebeu uma cópia própria da variável global \texttt{contador}. Por isso, cada filho imprimiu o valor local de um milhão, enquanto o processo pai manteve seu contador igual a zero.
+
+Esse comportamento não representa erro no código. Ele é consequência do isolamento de memória entre processos.
+
+No programa com threads, todas as threads compartilharam a mesma variável global. Nesse caso, a atualização de \texttt{contador} ocorreu sobre um estado comum.
+
+Entretanto, como o incremento não foi protegido por sincronização, ocorreu uma condição de corrida. O resultado final variou entre execuções e ficou abaixo do valor logicamente esperado de quatro milhões.
+
+Assim, a atividade evidencia duas lições complementares:
+
+\begin{enumerate}
+    \item processos isolam memória e exigem comunicação explícita quando dados precisam ser combinados;
+    \item threads compartilham memória, mas exigem sincronização quando há escrita concorrente.
+\end{enumerate}
+
+Em termos de Computação de Alto Desempenho, essa distinção é essencial. A correção de uma aplicação concorrente depende tanto da divisão do trabalho quanto da forma como os dados são compartilhados, protegidos ou combinados.
+
+\section{Síntese para defesa oral}
+\label{sec:atvd03-defesa}
+
+Os principais pontos para apresentação oral da atividade são:
+
+\begin{enumerate}
+    \item A atividade compara dois programas: um com processos e outro com threads.
+
+    \item Nos dois casos há quatro unidades de execução, e cada uma realiza um milhão de incrementos.
+
+    \item No programa com processos, os filhos são criados com \texttt{fork()}.
+
+    \item Após o \texttt{fork()}, cada processo filho possui sua própria cópia da variável global \texttt{contador}.
+
+    \item Por isso, cada filho imprime \texttt{contador = 1000000}, mas o pai imprime \texttt{contador = 0}.
+
+    \item O pai aguarda os filhos com \texttt{wait(NULL)}, mas aguardar não significa receber as alterações feitas na memória dos filhos.
+
+    \item Se fosse necessário somar os resultados no pai, seria preciso usar comunicação entre processos ou memória compartilhada explícita.
+
+    \item No programa com threads, as threads são criadas com \texttt{pthread\_create()}.
+
+    \item Todas as threads pertencem ao mesmo processo e acessam a mesma variável global.
+
+    \item O valor correto, caso todos os incrementos fossem preservados, seria \(4\,000\,000\).
+
+    \item O código usa \texttt{contador++} sem sincronização.
+
+    \item O incremento não é atomicamente seguro: envolve ler, somar e escrever.
+
+    \item Quando duas threads fazem isso ao mesmo tempo, atualizações podem ser perdidas.
+
+    \item As execuções registradas produziram valores finais variáveis, entre \(1\,171\,730\) e \(1\,681\,956\).
+
+    \item Essa variação caracteriza uma condição de corrida.
+
+    \item Uma solução com threads poderia usar \texttt{mutex}, operação atômica ou acumuladores locais por thread.
+
+    \item Para este problema, acumuladores locais seguidos de soma final são uma solução eficiente, pois evitam sincronizar cada incremento.
+
+    \item A conclusão principal é que processos isolam memória, enquanto threads compartilham memória. Isolamento exige comunicação explícita; compartilhamento exige sincronização.
+\end{enumerate}
