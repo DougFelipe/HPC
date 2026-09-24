@@ -1,0 +1,85 @@
+\documentclass[
+    12pt,
+    a4paper,
+    oneside
+]{report}
+
+\input{config}
+
+\begin{document}
+
+\hypersetup{pageanchor=false}
+
+\begin{titlepage}
+    \centering
+
+    {\Large Universidade Federal do Rio Grande do Norte\par}
+    \vspace{0.3cm}
+
+    {\large Instituto Metrópole Digital\par}
+
+    \vfill
+
+    {\Huge\bfseries Relatório Final da Primeira Unidade\par}
+
+    \vspace{0.4cm}
+
+    {\LARGE Computação de Alto Desempenho\par}
+
+    \vspace{1cm}
+
+    {\large Relatórios das atividades práticas e experimentais\par}
+
+    \vfill
+
+    {\Large\bfseries Douglas Felipe\par}
+
+    \vfill
+
+    {\large Natal -- RN\par}
+    {\large 2026\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+
+\tableofcontents
+\clearpage
+
+\listoffigures
+\clearpage
+
+\listoftables
+\clearpage
+
+\pagenumbering{arabic}
+\hypersetup{pageanchor=true}
+
+\chapter*{Introdução}
+\addcontentsline{toc}{chapter}{Introdução}
+
+Este documento reúne os relatórios das atividades desenvolvidas na primeira unidade da disciplina de Computação de Alto Desempenho.
+Cada atividade será documentada, posteriormente, em termos teóricos, metodológicos e experimentais.
+Nesta versão inicial, o relatório estabelece a estrutura modular do documento e incorpora os códigos-fonte desenvolvidos nas atividades.
+
+\input{tarefas/atvd01}
+\input{tarefas/atvd02}
+\input{tarefas/atvd03}
+\input{tarefas/atvd04}
+\input{tarefas/atvd05}
+\input{tarefas/atvd06}
+\input{tarefas/atvd07}
+\input{tarefas/atvd08}
+
+\chapter*{Considerações Finais}
+\addcontentsline{toc}{chapter}{Considerações Finais}
+
+% TODO:
+% Preencher posteriormente com uma síntese geral das atividades,
+% após a documentação individual dos resultados e das análises.
+
+\printbibliography[
+    heading=bibintoc,
+    title={Referências}
+]
+
+\end{document}

@@ -1,0 +1,157 @@
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{siunitx}
+\sisetup{
+    output-decimal-marker={,},
+    detect-all=true
+}
+
+\usepackage{xcolor}
+\definecolor{codigoFundo}{RGB}{248,248,248}
+\definecolor{codigoBorda}{RGB}{210,210,210}
+\definecolor{codigoComentario}{RGB}{70,120,70}
+\definecolor{codigoString}{RGB}{150,70,70}
+\definecolor{codigoKeyword}{RGB}{20,70,140}
+
+\usepackage{listings}
+\lstdefinestyle{codigoC}{
+    language=C,
+    basicstyle=\ttfamily\scriptsize,
+    keywordstyle=\color{codigoKeyword}\bfseries,
+    commentstyle=\color{codigoComentario},
+    stringstyle=\color{codigoString},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    numbersep=8pt,
+    frame=single,
+    rulecolor=\color{codigoBorda},
+    backgroundcolor=\color{codigoFundo},
+    breaklines=true,
+    breakatwhitespace=false,
+    postbreak=\mbox{\textcolor{gray}{$\hookrightarrow$}\space},
+    tabsize=4,
+    showstringspaces=false,
+    keepspaces=true,
+    columns=fullflexible,
+    captionpos=b,
+    inputencoding=utf8,
+    extendedchars=true,
+    literate=
+        {á}{{\'a}}1 {à}{{\`a}}1 {ã}{{\~a}}1 {â}{{\^a}}1
+        {Á}{{\'A}}1 {À}{{\`A}}1 {Ã}{{\~A}}1 {Â}{{\^A}}1
+        {é}{{\'e}}1 {ê}{{\^e}}1 {É}{{\'E}}1 {Ê}{{\^E}}1
+        {í}{{\'i}}1 {Í}{{\'I}}1
+        {ó}{{\'o}}1 {õ}{{\~o}}1 {ô}{{\^o}}1
+        {Ó}{{\'O}}1 {Õ}{{\~O}}1 {Ô}{{\^O}}1
+        {ú}{{\'u}}1 {Ú}{{\'U}}1
+        {ç}{{\c{c}}}1 {Ç}{{\c{C}}}1
+        {º}{{$^\circ$}}1 {ª}{{$^a$}}1
+        {²}{{$^2$}}1 {³}{{$^3$}}1
+        {∫}{{$\int$}}1 {≤}{{$\le$}}1 {≥}{{$\ge$}}1
+        {–}{{--}}1 {—}{{--}}1
+}
+
+\lstset{style=codigoC}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+\tikzset{
+    bloco/.style={
+        rectangle,
+        draw,
+        rounded corners=2pt,
+        align=center,
+        minimum height=0.8cm,
+        text width=3.2cm
+    },
+    processo/.style={bloco, fill=blue!5},
+    decisao/.style={
+        diamond,
+        draw,
+        align=center,
+        aspect=2,
+        inner sep=1pt,
+        fill=yellow!10
+    },
+    fluxo/.style={-{Latex[length=2mm]}, thick},
+    componente/.style={bloco, fill=gray!8},
+    thread/.style={bloco, fill=green!8},
+    regiaoParalela/.style={draw, dashed, rounded corners=3pt, inner sep=6pt}
+}
+
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\usepackage[most]{tcolorbox}
+\newtcolorbox{conceitobox}{
+    colback=blue!3,
+    colframe=blue!40!black,
+    boxrule=0.4pt,
+    arc=2pt,
+    left=6pt,
+    right=6pt,
+    top=6pt,
+    bottom=6pt
+}
+\newtcolorbox{decisionbox}{
+    colback=orange!4,
+    colframe=orange!45!black,
+    boxrule=0.4pt,
+    arc=2pt,
+    left=6pt,
+    right=6pt,
+    top=6pt,
+    bottom=6pt
+}
+\newtcolorbox{validationbox}{
+    colback=green!4,
+    colframe=green!40!black,
+    boxrule=0.4pt,
+    arc=2pt,
+    left=6pt,
+    right=6pt,
+    top=6pt,
+    bottom=6pt
+}
+\newtcolorbox{oralbox}{
+    colback=gray!5,
+    colframe=gray!55,
+    boxrule=0.4pt,
+    arc=2pt,
+    left=6pt,
+    right=6pt,
+    top=6pt,
+    bottom=6pt
+}
+
+\usepackage{csquotes}
+\usepackage[
+    backend=biber,
+    style=numeric,
+    sorting=none
+]{biblatex}
+\addbibresource{referencias.bib}
+
+\usepackage[
+    hidelinks,
+    plainpages=false,
+    pdfpagelabels
+]{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
