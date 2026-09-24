@@ -1,0 +1,1430 @@
+\chapter{Atividade 4 -- Integral pelo método do trapézio e análise de paralelização}
+
+\label{chap:atvd04}
+
+\section{Enunciado da tarefa}
+
+\label{sec:atvd04-enunciado}
+
+\begin{quote}
+
+Implemente uma versão sequencial de um programa para o cálculo de integrais
+definidas utilizando o método do trapézio.
+
+O programa deve permitir calcular numericamente a integral de uma função
+\(f(x)\) em um intervalo \([a,b]\), utilizando \(n\) subdivisões.
+
+Em seguida, analise o código e discuta quais partes podem ser paralelizadas.
+Também devem ser identificados possíveis desafios ou problemas relacionados
+à paralelização desse problema, como dependências entre operações, acesso
+concorrente a variáveis compartilhadas, necessidade de sincronização e
+redução dos resultados parciais.
+
+\end{quote}
+
+
+\section{Objetivos e requisitos}
+
+\label{sec:atvd04-objetivos}
+
+A atividade teve como objetivo implementar uma versão sequencial do método
+composto do trapézio e utilizar essa implementação como base para analisar
+oportunidades e limitações de uma futura paralelização.
+
+A parte prática foi deliberadamente mantida sequencial. A discussão de
+paralelismo foi realizada a partir da estrutura do algoritmo e das
+dependências observadas no laço responsável pela acumulação das contribuições
+dos pontos internos.
+
+Os principais objetivos considerados foram:
+
+\begin{itemize}
+    \item implementar corretamente o método composto do trapézio em C;
+    \item utilizar aritmética inteira de 64 bits para tornar o cálculo
+    determinístico e evitar efeitos de arredondamento em ponto flutuante;
+    \item variar o número de subdivisões \(N\) e observar o comportamento do
+    erro numérico e do tempo de execução;
+    \item utilizar uma metodologia de temporização capaz de medir somente a
+    região computacional de interesse;
+    \item executar aquecimentos e múltiplas medições para reduzir o efeito de
+    interferências externas;
+    \item validar analiticamente cada resultado antes de considerá-lo válido
+    para análise de desempenho;
+    \item identificar quais dados seriam privados ou compartilhados em uma
+    implementação paralela;
+    \item discutir a condição de corrida associada ao acumulador da soma;
+    \item identificar a operação de redução como mecanismo natural para uma
+    futura implementação paralela.
+\end{itemize}
+
+
+\section{Fundamentação conceitual}
+
+\label{sec:atvd04-fundamentacao}
+
+\subsection{Integração numérica}
+
+Uma integral definida
+
+\begin{equation}
+    I = \int_a^b f(x)\,dx
+\end{equation}
+
+pode ser interpretada geometricamente como a área algébrica delimitada pela
+função \(f(x)\) no intervalo \([a,b]\).
+
+Quando a integral não é calculada diretamente por uma expressão analítica,
+métodos numéricos podem aproximar seu valor utilizando amostras discretas da
+função.
+
+Nesta atividade foi utilizado o método composto do trapézio.
+
+\subsection{Método composto do trapézio}
+
+Se o intervalo \([a,b]\) for dividido em \(N\) partes de mesma largura,
+define-se
+
+\begin{equation}
+    h = \frac{b-a}{N}.
+\end{equation}
+
+Os pontos da discretização são dados por
+
+\begin{equation}
+    x_i = a + ih,
+    \qquad
+    i = 0,1,\ldots,N.
+\end{equation}
+
+Em cada subintervalo, a curva é aproximada por um segmento de reta. A área
+aproximada do trapézio correspondente ao intervalo
+\([x_i,x_{i+1}]\) é
+
+\begin{equation}
+    A_i =
+    \frac{h}{2}
+    \left[
+        f(x_i)+f(x_{i+1})
+    \right].
+\end{equation}
+
+A forma composta pode ser escrita como
+
+\begin{equation}
+    I_N =
+    h
+    \left[
+        \frac{f(a)+f(b)}{2}
+        +
+        \sum_{i=1}^{N-1} f(a+ih)
+    \right].
+\end{equation}
+
+Para a implementação inteira adotada nesta atividade, utilizou-se a forma
+algebricamente equivalente
+
+\begin{equation}
+    I_N =
+    h
+    \sum_{i=1}^{N-1} f(x_i)
+    +
+    \frac{
+        h\left[f(a)+f(b)\right]
+    }{2}.
+    \label{eq:atvd04-trapezio}
+\end{equation}
+
+Essa reorganização evita a formação intermediária de
+\(2\sum f(x_i)\), reduzindo o risco de aproximação desnecessária do limite
+representável por \texttt{int64\_t}.
+
+\subsection{Função utilizada}
+
+Foi adotada a função
+
+\begin{equation}
+    f(x)=x^2
+\end{equation}
+
+no intervalo
+
+\begin{equation}
+    [a,b]=[0,2\,400\,000].
+\end{equation}
+
+A integral analítica é
+
+\begin{equation}
+    \int_0^{2\,400\,000}x^2\,dx
+    =
+    \frac{(2\,400\,000)^3}{3},
+\end{equation}
+
+resultando em
+
+\begin{equation}
+    I_{\text{exato}}
+    =
+    4\,608\,000\,000\,000\,000\,000.
+    \label{eq:atvd04-integral-exata}
+\end{equation}
+
+Esse valor permanece dentro do intervalo representável por um inteiro
+assinado de 64 bits.
+
+\subsection{Erro do método}
+
+Para uma função suficientemente suave, o erro global do método composto do
+trapézio é de ordem
+
+\begin{equation}
+    O(h^2).
+\end{equation}
+
+Para \(f(x)=x^2\), tem-se
+
+\begin{equation}
+    f''(x)=2,
+\end{equation}
+
+e o erro pode ser determinado exatamente por
+
+\begin{equation}
+    E_N =
+    \frac{(b-a)h^2}{6}.
+    \label{eq:atvd04-erro}
+\end{equation}
+
+Como \(x^2\) é convexa, o método do trapézio produz uma superestimação e,
+portanto,
+
+\begin{equation}
+    I_N =
+    I_{\text{exato}} + E_N.
+    \label{eq:atvd04-resultado-esperado}
+\end{equation}
+
+Como
+
+\begin{equation}
+    h=\frac{b-a}{N},
+\end{equation}
+
+segue que
+
+\begin{equation}
+    E_N = O\left(\frac{1}{N^2}\right).
+\end{equation}
+
+Esse comportamento fornece também um critério independente de validação dos
+resultados experimentais.
+
+\subsection{Complexidade computacional}
+
+O laço principal avalia todos os \(N-1\) pontos internos. Dessa forma, a
+complexidade temporal é
+
+\begin{equation}
+    T(N)=O(N).
+\end{equation}
+
+A implementação não armazena os pontos da discretização nem os valores da
+função em vetores. Cada ponto é produzido somente quando necessário.
+
+Consequentemente, a memória adicional utilizada pelo kernel é constante:
+
+\begin{equation}
+    M(N)=O(1).
+\end{equation}
+
+
+\section{Interpretação didática da tarefa}
+
+\label{sec:atvd04-interpretacao}
+
+Embora o domínio matemático da atividade seja a integração numérica, o
+objetivo didático relacionado à Computação de Alto Desempenho está na
+estrutura da soma
+
+\begin{equation}
+    S =
+    \sum_{i=1}^{N-1} f(a+ih).
+\end{equation}
+
+Cada ponto é obtido por
+
+\begin{equation}
+    x_i=a+ih.
+\end{equation}
+
+Portanto, o cálculo de \(x_i\) não depende de \(x_{i-1}\). Da mesma forma,
+a avaliação
+
+\begin{equation}
+    f(x_i)
+\end{equation}
+
+não depende da avaliação realizada em outra iteração.
+
+As contribuições individuais apresentam, assim, potencial para paralelismo
+de dados.
+
+Entretanto, a implementação sequencial contém a operação
+
+\begin{verbatim}
+soma += funcao_integrando(x_i);
+\end{verbatim}
+
+que estabelece uma dependência sobre o acumulador \texttt{soma}.
+
+Em uma paralelização ingênua, múltiplas threads poderiam ler e modificar
+essa variável simultaneamente, produzindo uma condição de corrida.
+
+O problema pode ser representado conceitualmente como
+
+\begin{verbatim}
+Thread 1 ----> soma += valor_1
+Thread 2 ----> soma += valor_2
+Thread 3 ----> soma += valor_3
+                         |
+                         v
+               acumulador compartilhado
+\end{verbatim}
+
+Uma estratégia mais apropriada consistiria em utilizar acumuladores privados
+
+\begin{equation}
+    S_1,S_2,\ldots,S_P
+\end{equation}
+
+e combiná-los posteriormente:
+
+\begin{equation}
+    S =
+    \sum_{p=1}^{P}S_p.
+\end{equation}
+
+Esse padrão corresponde a uma operação de \emph{reduction}.
+
+A atividade, portanto, estabelece a base conceitual para uma implementação
+paralela posterior: o cálculo dos pontos é independente, enquanto a
+acumulação exige tratamento específico.
+
+
+\section{Modelagem da solução}
+
+\label{sec:atvd04-modelagem}
+
+\subsection{Estrutura geral}
+
+A solução foi organizada em quatro etapas principais:
+
+\begin{enumerate}
+    \item definição do problema matemático e dos valores de \(N\);
+    \item execução do kernel sequencial do método do trapézio;
+    \item realização dos aquecimentos e medições temporais;
+    \item validação matemática e apresentação dos resultados.
+\end{enumerate}
+
+Os valores de \(N\) utilizados foram
+
+\begin{equation}
+\begin{split}
+N \in \{&
+24\,000,\,
+120\,000,\,
+240\,000,\,
+400\,000,\\
+&
+800\,000,\,
+1\,200\,000,\,
+2\,400\,000
+\}.
+\end{split}
+\end{equation}
+
+Todos esses valores dividem exatamente o comprimento do intervalo
+
+\begin{equation}
+    b-a=2\,400\,000,
+\end{equation}
+
+garantindo que
+
+\begin{equation}
+    h=\frac{b-a}{N}
+\end{equation}
+
+permaneça inteiro.
+
+\subsection{Principais funções e componentes}
+
+A implementação foi decomposta nas seguintes responsabilidades:
+
+\begin{description}
+
+    \item[\texttt{funcao\_integrando()}]
+    Calcula \(f(x)=x^2\).
+
+    \item[\texttt{integral\_trapezio()}]
+    Implementa o kernel sequencial do método composto do trapézio.
+
+    \item[\texttt{obter\_tempo()}]
+    Obtém um instante utilizando \texttt{CLOCK\_MONOTONIC}.
+
+    \item[\texttt{diferenca\_ns()}]
+    Calcula o intervalo entre dois instantes em nanossegundos.
+
+    \item[\texttt{comparar\_uint64()}]
+    Implementa a função auxiliar utilizada na ordenação dos tempos.
+
+    \item[\texttt{calcular\_mediana()}]
+    Calcula a mediana das vinte medições de uma configuração.
+
+    \item[\texttt{resultado\_esperado()}]
+    Calcula analiticamente o resultado que o método do trapézio deve
+    produzir para determinado \(N\).
+
+    \item[\texttt{executar\_benchmark()}]
+    Coordena aquecimentos, medições, validação, normalização e impressão
+    dos resultados.
+
+    \item[\texttt{main()}]
+    Percorre os diferentes valores de \(N\) e coordena o experimento.
+
+\end{description}
+
+
+\section{Decisões de projeto e trade-offs}
+
+\label{sec:atvd04-decisoes}
+
+\subsection{Uso de \texttt{int64\_t}}
+
+Foi utilizada aritmética inteira em vez de \texttt{float} ou \texttt{double}
+no kernel.
+
+Essa decisão teve como objetivos:
+
+\begin{itemize}
+    \item evitar diferenças decorrentes de arredondamento em ponto
+    flutuante;
+    \item tornar a validação determinística;
+    \item facilitar a futura análise de redução;
+    \item permitir comparação exata com o resultado teórico do método.
+\end{itemize}
+
+O uso de \texttt{int} de 32 bits não seria suficiente. Por exemplo,
+
+\begin{equation}
+    (2\,400\,000)^2
+    =
+    5\,760\,000\,000\,000,
+\end{equation}
+
+valor já superior ao limite de um inteiro assinado de 32 bits.
+
+Por esse motivo foi adotado \texttt{int64\_t}.
+
+\subsection{Escolha do intervalo}
+
+O limite superior \(2\,400\,000\) foi escolhido de forma que:
+
+\begin{itemize}
+    \item existissem diversos divisores adequados para \(N\);
+    \item \(h\) permanecesse inteiro;
+    \item o valor da integral ainda coubesse em \texttt{int64\_t}.
+\end{itemize}
+
+Essa escolha também impôs uma limitação: para manter \(h\geq1\), o maior
+valor possível de \(N\) é \(2\,400\,000\).
+
+Essa restrição contribuiu para a adoção posterior de repetições internas
+durante a temporização.
+
+\subsection{Cálculo direto de \(x_i\)}
+
+Os pontos são calculados por
+
+\begin{equation}
+    x_i=a+ih
+\end{equation}
+
+em vez de utilizar a recorrência
+
+\begin{equation}
+    x_{i+1}=x_i+h.
+\end{equation}
+
+Essa decisão evita introduzir uma dependência artificial entre iterações e
+torna explícito que a dependência principal do laço está apenas na
+acumulação da soma.
+
+\subsection{Ausência de vetores intermediários}
+
+Não foram armazenados vetores contendo os pontos \(x_i\) ou os valores
+\(f(x_i)\).
+
+Essa decisão mantém
+
+\begin{equation}
+    M(N)=O(1)
+\end{equation}
+
+e evita introduzir efeitos de alocação e acesso à memória que não fazem
+parte do objetivo principal da atividade.
+
+\subsection{Nível de otimização}
+
+A compilação experimental foi realizada com otimização
+
+\begin{verbatim}
+-O2
+\end{verbatim}
+
+em vez de \texttt{-O0}.
+
+O uso de \texttt{-O0} produziria um executável artificialmente pouco
+otimizado e não representativo de uma execução sequencial realista.
+
+Entretanto, foi utilizada a opção
+
+\begin{verbatim}
+-fno-tree-vectorize
+\end{verbatim}
+
+para impedir que o compilador transformasse automaticamente o laço escalar
+em código SIMD.
+
+Dessa forma, a execução permaneceu sequencial e escalar para fins da
+atividade, ainda permitindo otimizações convencionais do compilador.
+
+\subsection{Proteção contra otimizações interprocedurais}
+
+Durante o desenvolvimento, uma versão inicial do benchmark apresentou
+tempos iguais a zero, mesmo para os maiores valores de \(N\).
+
+A análise indicou que impedir apenas o \emph{inlining} não era suficiente.
+O compilador podia reconhecer que chamadas consecutivas do kernel,
+realizadas com os mesmos argumentos, produziriam sempre o mesmo resultado
+e reutilizar a computação.
+
+Por esse motivo, o kernel foi marcado, no GCC, com
+
+\begin{verbatim}
+__attribute__((noinline, noipa))
+\end{verbatim}
+
+O atributo \texttt{noinline} impede a incorporação da função ao chamador,
+enquanto \texttt{noipa} impede otimizações interprocedurais capazes de
+eliminar ou reutilizar chamadas repetidas.
+
+Adicionalmente, o resultado é armazenado em uma variável
+\texttt{volatile} após a região cronometrada, tornando seu uso observável.
+
+O acumulador principal, entretanto, permanece não-\texttt{volatile}, de
+forma a não alterar artificialmente o desempenho do kernel.
+
+\subsection{Repetições internas}
+
+Após a correção das otimizações interprocedurais, as execuções individuais
+ainda eram curtas, variando da ordem de microssegundos até frações de
+milissegundo.
+
+Para aumentar a duração efetivamente observada pelo relógio, cada medição
+passou a executar
+
+\begin{equation}
+    R=1000
+\end{equation}
+
+chamadas consecutivas do kernel.
+
+O tempo medido para o lote é posteriormente normalizado:
+
+\begin{equation}
+    T_{\text{execução}}
+    =
+    \frac{T_{\text{lote}}}{1000}.
+\end{equation}
+
+Essa estratégia reduz a influência relativa do overhead de temporização sem
+alterar o algoritmo analisado.
+
+
+\section{Representação estrutural da implementação}
+
+\label{sec:atvd04-estrutura}
+
+A Figura~\ref{fig:atvd04-estrutura} apresenta uma representação estrutural
+simplificada da implementação.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}{0.88\textwidth}
+\begin{verbatim}
+main
+ |
+ +-- define os valores de N
+ |
+ +-- imprime a configuracao experimental
+ |
+ +-- para cada N
+       |
+       +-- executar_benchmark
+             |
+             +-- 3 aquecimentos
+             |     |
+             |     +-- integral_trapezio
+             |
+             +-- 20 medicoes
+             |     |
+             |     +-- 1000 chamadas do kernel
+             |     +-- CLOCK_MONOTONIC
+             |
+             +-- calcular_mediana
+             |
+             +-- resultado_esperado
+             |
+             +-- validar resultado
+             |
+             +-- calcular erro e ns/trap
+             |
+             +-- imprimir resultado
+\end{verbatim}
+    \end{minipage}
+
+    \caption{Estrutura geral da implementação da Atividade 4.}
+    \label{fig:atvd04-estrutura}
+\end{figure}
+
+
+\section{Fluxo de execução}
+
+\label{sec:atvd04-fluxo}
+
+O fluxo experimental é apresentado na
+Figura~\ref{fig:atvd04-fluxo}.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}{0.88\textwidth}
+\begin{verbatim}
+              Inicio
+                |
+                v
+      Configuracao experimental
+                |
+                v
+        Selecionar valor de N
+                |
+                v
+         3 aquecimentos
+                |
+                v
+      +----------------------+
+      | 20 medicoes validas  |
+      |                      |
+      | t0                   |
+      | 1000 x kernel        |
+      | t1                   |
+      +----------------------+
+                |
+                v
+        Calcular mediana
+                |
+                v
+ Normalizar tempo por execucao
+                |
+                v
+      Validar resultado
+                |
+          +-----+-----+
+          |           |
+       correto     incorreto
+          |           |
+          v           v
+ Calcular metricas   abortar
+          |
+          v
+    Imprimir resultado
+          |
+          v
+     Existe outro N?
+          |
+     +----+----+
+     |         |
+    sim       nao
+     |         |
+     +---->    v
+             Fim
+\end{verbatim}
+    \end{minipage}
+
+    \caption{Fluxo de execução do benchmark sequencial.}
+    \label{fig:atvd04-fluxo}
+\end{figure}
+
+
+\section{Metodologia experimental}
+
+\label{sec:atvd04-metodologia}
+
+\subsection{Ambiente de execução}
+
+Os experimentos da Atividade 4 foram executados em ambiente Windows,
+utilizando terminal MSYS2/UCRT64 e compilador GCC.
+
+A compilação utilizada foi equivalente a:
+
+\begin{verbatim}
+gcc -std=c11 -O2 -Wall -Wextra -Wpedantic \
+    -fno-tree-vectorize tarefa4.c -o tarefa4.exe
+\end{verbatim}
+
+Não foi registrado, durante a execução experimental consolidada, o número
+de versão do compilador no conjunto de resultados utilizado neste capítulo;
+por isso esse dado não é atribuído posteriormente.
+
+\subsection{Configuração das medições}
+
+Para cada valor de \(N\) foram executados:
+
+\begin{equation}
+    3
+\end{equation}
+
+aquecimentos, descartados das estatísticas, seguidos de
+
+\begin{equation}
+    20
+\end{equation}
+
+medições válidas.
+
+Cada medição executou internamente
+
+\begin{equation}
+    1000
+\end{equation}
+
+chamadas do kernel.
+
+O tempo do lote foi obtido por
+
+\begin{verbatim}
+clock_gettime(CLOCK_MONOTONIC, ...)
+\end{verbatim}
+
+e normalizado para uma única execução.
+
+A estatística representativa utilizada foi a mediana das vinte medições.
+
+A escolha da mediana reduz a influência de observações isoladas afetadas
+por interrupções, escalonamento do sistema operacional ou processos em
+segundo plano.
+
+\subsection{Região cronometrada}
+
+Dentro da região medida permaneceram somente:
+
+\begin{itemize}
+    \item cálculo da integral;
+    \item cálculo de \(h\);
+    \item cálculo dos pontos internos;
+    \item avaliação de \(f(x_i)\);
+    \item acumulação da soma;
+    \item combinação com os extremos.
+\end{itemize}
+
+Operações como impressão, validação, ordenação dos tempos, cálculo da
+mediana e formatação do resultado permaneceram fora da região cronometrada.
+
+\subsection{Métricas}
+
+Foram utilizadas três grandezas principais:
+
+\paragraph{Tempo mediano}
+
+\begin{equation}
+    T_{\text{med}}
+\end{equation}
+
+correspondente ao tempo normalizado de uma execução.
+
+\paragraph{Erro absoluto}
+
+\begin{equation}
+    E_{\text{abs}}
+    =
+    \left|
+        I_N-I_{\text{exato}}
+    \right|.
+\end{equation}
+
+\paragraph{Tempo normalizado por trapézio}
+
+\begin{equation}
+    C_N =
+    \frac{T_{\text{med}}}{N}.
+\end{equation}
+
+A métrica foi apresentada em nanossegundos por trapézio:
+
+\begin{equation}
+    \text{ns/trap}.
+\end{equation}
+
+Como o algoritmo possui complexidade \(O(N)\), espera-se que essa razão
+permaneça aproximadamente constante para execuções suficientemente
+representativas.
+
+
+\section{Código-fonte desenvolvido}
+
+\label{sec:atvd04-codigo}
+
+\lstinputlisting[
+    style=codigoC,
+    caption={Código-fonte da Atividade 4.},
+    label={lst:atvd04-codigo}
+]{../ATVD4/tarefa4.c}
+
+
+\section{Validação da implementação}
+
+\label{sec:atvd04-validacao}
+
+A validação foi realizada utilizando simultaneamente o valor analítico da
+integral e a expressão exata do erro do método para \(f(x)=x^2\).
+
+Para cada \(N\), calculou-se
+
+\begin{equation}
+    h=\frac{2\,400\,000}{N}
+\end{equation}
+
+e
+
+\begin{equation}
+    E_N=
+    \frac{2\,400\,000\,h^2}{6}.
+\end{equation}
+
+A Tabela~\ref{tab:atvd04-validacao} apresenta os valores esperados.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Validação analítica do erro do método do trapézio.}
+    \label{tab:atvd04-validacao}
+    \begin{tabular}{r|r|r}
+        \hline
+        \(N\) & \(h\) & Erro esperado \\
+        \hline
+        24\,000    & 100 & 4\,000\,000\,000 \\
+        120\,000   & 20  & 160\,000\,000 \\
+        240\,000   & 10  & 40\,000\,000 \\
+        400\,000   & 6   & 14\,400\,000 \\
+        800\,000   & 3   & 3\,600\,000 \\
+        1\,200\,000 & 2  & 1\,600\,000 \\
+        2\,400\,000 & 1  & 400\,000 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+Todos os valores calculados experimentalmente coincidiram exatamente com
+esses valores esperados.
+
+A validação, portanto, não utilizou tolerância de ponto flutuante. A
+comparação foi realizada diretamente com valores inteiros.
+
+Esse resultado confirmou simultaneamente:
+
+\begin{itemize}
+    \item a correta implementação do método;
+    \item a ausência de overflow nos casos utilizados;
+    \item a validade dos valores escolhidos para \(N\);
+    \item a convergência esperada do método.
+\end{itemize}
+
+
+\section{Resultados experimentais}
+
+\label{sec:atvd04-resultados}
+
+A Tabela~\ref{tab:atvd04-resultados} apresenta os resultados finais obtidos
+após a introdução das mil repetições internas por medição.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Resultados experimentais finais da Atividade 4.}
+    \label{tab:atvd04-resultados}
+    \small
+    \begin{tabular}{r|r|r|r|r}
+        \hline
+        \(N\) &
+        Integral &
+        Erro absoluto &
+        Mediana (ms) &
+        ns/trap \\
+        \hline
+        24\,000 &
+        4608000004000000000 &
+        4000000000 &
+        0.005066 &
+        0.211 \\
+
+        120\,000 &
+        4608000000160000000 &
+        160000000 &
+        0.025484 &
+        0.212 \\
+
+        240\,000 &
+        4608000000040000000 &
+        40000000 &
+        0.050818 &
+        0.212 \\
+
+        400\,000 &
+        4608000000014400000 &
+        14400000 &
+        0.084860 &
+        0.212 \\
+
+        800\,000 &
+        4608000000003600000 &
+        3600000 &
+        0.171002 &
+        0.214 \\
+
+        1\,200\,000 &
+        4608000000001600000 &
+        1600000 &
+        0.254809 &
+        0.212 \\
+
+        2\,400\,000 &
+        4608000000000400000 &
+        400000 &
+        0.511678 &
+        0.213 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+A integral converge progressivamente para
+
+\begin{equation}
+    4\,608\,000\,000\,000\,000\,000,
+\end{equation}
+
+enquanto o erro absoluto diminui conforme o número de subdivisões aumenta.
+
+
+\section{Visualização dos resultados}
+
+\label{sec:atvd04-visualizacao}
+
+Os resultados apresentam duas tendências distintas e complementares.
+
+\begin{center}
+\fbox{
+\begin{minipage}{0.84\textwidth}
+\centering
+\textbf{Comportamento numérico}
+
+\vspace{0.2cm}
+
+\(N \uparrow\)
+\(\quad\Longrightarrow\quad\)
+\(h \downarrow\)
+\(\quad\Longrightarrow\quad\)
+\(E_{\text{abs}}\downarrow\)
+
+\vspace{0.2cm}
+
+\[
+E_{\text{abs}}
+=
+O(N^{-2})
+\]
+
+\vspace{0.35cm}
+
+\textbf{Comportamento computacional}
+
+\vspace{0.2cm}
+
+\(N \uparrow\)
+\(\quad\Longrightarrow\quad\)
+número de iterações \(\uparrow\)
+\(\quad\Longrightarrow\quad\)
+tempo \(\uparrow\)
+
+\vspace{0.2cm}
+
+\[
+T(N)=O(N)
+\]
+
+\vspace{0.2cm}
+
+\[
+\frac{T(N)}{N}
+\approx
+0.21\ \text{ns/trap}
+\]
+\end{minipage}
+}
+\end{center}
+
+A estabilidade da coluna \texttt{ns/trap} constitui uma forma normalizada
+de visualizar o comportamento linear do kernel.
+
+Os valores obtidos foram
+
+\begin{equation}
+    0.211,\,
+    0.212,\,
+    0.212,\,
+    0.212,\,
+    0.214,\,
+    0.212,\,
+    0.213
+    \ \text{ns/trap}.
+\end{equation}
+
+A variação é pequena ao longo de toda a faixa experimental.
+
+
+\section{Análise e discussão}
+
+\label{sec:atvd04-discussao}
+
+\subsection{Comportamento do erro}
+
+Os resultados confirmam a ordem de convergência esperada.
+
+Quando \(N\) passa de
+
+\begin{equation}
+    120\,000
+\end{equation}
+
+para
+
+\begin{equation}
+    240\,000,
+\end{equation}
+
+o número de subdivisões dobra.
+
+O erro, entretanto, passa de
+
+\begin{equation}
+    160\,000\,000
+\end{equation}
+
+para
+
+\begin{equation}
+    40\,000\,000,
+\end{equation}
+
+ou seja, é reduzido por um fator de quatro.
+
+Isso é compatível com
+
+\begin{equation}
+    E_N=O(N^{-2}).
+\end{equation}
+
+A mesma propriedade pode ser observada nos demais pares de configurações
+compatíveis.
+
+\subsection{Comportamento temporal}
+
+O tempo de execução apresentou crescimento aproximadamente proporcional ao
+número de subdivisões.
+
+Por exemplo, entre
+
+\begin{equation}
+    N=120\,000
+\end{equation}
+
+e
+
+\begin{equation}
+    N=240\,000,
+\end{equation}
+
+o número de subdivisões dobra, enquanto o tempo passa de
+
+\begin{equation}
+    0.025484\ \text{ms}
+\end{equation}
+
+para
+
+\begin{equation}
+    0.050818\ \text{ms}.
+\end{equation}
+
+A razão entre os tempos é aproximadamente
+
+\begin{equation}
+    \frac{0.050818}{0.025484}
+    \approx
+    1.994.
+\end{equation}
+
+Analogamente, entre \(400\,000\) e \(800\,000\),
+
+\begin{equation}
+    \frac{0.171002}{0.084860}
+    \approx
+    2.015,
+\end{equation}
+
+e entre \(1\,200\,000\) e \(2\,400\,000\),
+
+\begin{equation}
+    \frac{0.511678}{0.254809}
+    \approx
+    2.008.
+\end{equation}
+
+Esses resultados são compatíveis com a complexidade
+
+\begin{equation}
+    T(N)=O(N).
+\end{equation}
+
+\subsection{Custo normalizado}
+
+O custo por trapézio permaneceu aproximadamente constante em torno de
+
+\begin{equation}
+    0.21\ \text{ns/trap}.
+\end{equation}
+
+Esse resultado reforça a interpretação de crescimento linear.
+
+O pequeno intervalo observado,
+
+\begin{equation}
+    0.211
+    \leq
+    C_N
+    \leq
+    0.214,
+\end{equation}
+
+é compatível com variações normais de execução do sistema.
+
+\subsection{Efeito das repetições internas}
+
+As execuções individuais do kernel apresentaram tempos curtos. No menor
+caso, o tempo normalizado foi
+
+\begin{equation}
+    0.005066\ \text{ms},
+\end{equation}
+
+enquanto no maior foi
+
+\begin{equation}
+    0.511678\ \text{ms}.
+\end{equation}
+
+Como cada medição executou mil chamadas, as regiões efetivamente observadas
+pelo relógio apresentaram duração mediana aproximada entre
+
+\begin{equation}
+    5.066\ \text{ms}
+\end{equation}
+
+e
+
+\begin{equation}
+    511.678\ \text{ms}.
+\end{equation}
+
+Isso reduziu significativamente a influência relativa do custo das chamadas
+ao temporizador.
+
+Além disso, os tempos normalizados permaneceram próximos aos valores
+observados antes da introdução do batching, fornecendo evidência de que a
+alteração aumentou a robustez da medição sem modificar a tendência do
+kernel.
+
+\subsection{Análise de paralelização}
+
+O laço principal pode ser representado conceitualmente por
+
+\begin{verbatim}
+for i = 1 .. N-1
+    x_i   = a + i*h
+    valor = f(x_i)
+    soma  = soma + valor
+\end{verbatim}
+
+As duas primeiras operações podem ser executadas independentemente para
+diferentes valores de \(i\).
+
+O problema aparece na terceira operação.
+
+A atualização
+
+\begin{equation}
+    S \leftarrow S + v_i
+\end{equation}
+
+envolve leitura, operação aritmética e escrita.
+
+Se diferentes threads realizarem essas etapas simultaneamente sobre o mesmo
+acumulador, atualizações podem ser perdidas.
+
+A versão paralela ingênua teria, portanto, uma condição de corrida.
+
+Uma possível decomposição seria:
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}{0.85\textwidth}
+\begin{verbatim}
+              Iteracoes independentes
+                       |
+          +------------+------------+
+          |            |            |
+          v            v            v
+       Thread 1     Thread 2      Thread P
+          |            |            |
+          v            v            v
+         S_1          S_2          S_P
+          |            |            |
+          +------------+------------+
+                       |
+                       v
+                   Reduction
+                       |
+                       v
+                       S
+\end{verbatim}
+    \end{minipage}
+
+    \caption{Decomposição conceitual do acumulador por redução.}
+    \label{fig:atvd04-reduction}
+\end{figure}
+
+Nesse modelo, cada thread mantém um acumulador privado durante sua parcela
+do trabalho. Somente posteriormente os resultados parciais são combinados.
+
+Essa abordagem evita a atualização concorrente de uma única variável a cada
+iteração.
+
+\subsection{Classificação das variáveis}
+
+Em uma eventual versão paralela, as variáveis poderiam ser classificadas
+como apresentado na Tabela~\ref{tab:atvd04-variaveis}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Classificação conceitual das variáveis em uma paralelização.}
+    \label{tab:atvd04-variaveis}
+
+    \begin{tabular}{l|l}
+        \hline
+        Elemento & Classificação conceitual \\
+        \hline
+        \(a\) & compartilhado, somente leitura \\
+        \(b\) & compartilhado, somente leitura \\
+        \(N\) & compartilhado, somente leitura \\
+        \(h\) & compartilhado, somente leitura \\
+        \(i\) & privado por thread \\
+        \(x_i\) & privado por thread \\
+        \(f(x_i)\) & privado por thread \\
+        \texttt{soma} & variável de redução \\
+        \hline
+    \end{tabular}
+\end{table}
+
+Essa classificação mostra que a maior parte do estado do algoritmo não
+exige sincronização. O ponto crítico é a combinação dos resultados
+parciais.
+
+
+\section{Limitações e ameaças à validade}
+
+\label{sec:atvd04-limitacoes}
+
+Os resultados devem ser interpretados considerando algumas limitações.
+
+Primeiramente, o experimento utiliza uma função específica,
+
+\begin{equation}
+    f(x)=x^2,
+\end{equation}
+
+cujo custo por avaliação é baixo e aproximadamente uniforme. Funções mais
+complexas podem alterar significativamente a relação entre custo aritmético
+e overhead de paralelização.
+
+A adoção de aritmética inteira melhora a reprodutibilidade do experimento,
+mas não representa todas as aplicações de integração numérica, que
+frequentemente utilizam ponto flutuante.
+
+A opção \texttt{-fno-tree-vectorize} impede vetorização automática. Essa
+decisão é adequada para manter um baseline escalar, porém significa que os
+tempos não representam necessariamente o máximo desempenho sequencial que
+o compilador poderia produzir em uma aplicação real.
+
+Os atributos \texttt{noinline} e \texttt{noipa} também constituem uma
+intervenção metodológica destinada a preservar a validade do benchmark.
+Eles evitam que o compilador elimine trabalho que precisa ser medido, mas
+restringem algumas otimizações possíveis em um programa não experimental.
+
+As mil repetições internas utilizam sempre os mesmos parâmetros. Essa
+estratégia aumenta a duração da região cronometrada e reduz o impacto do
+temporizador, porém não representa uma sequência de problemas independentes
+com dados diferentes.
+
+Os experimentos foram executados em um sistema operacional de propósito
+geral. Escalonamento de processos, frequência dinâmica do processador,
+interrupções e outros serviços podem produzir pequenas variações entre
+medições.
+
+Por fim, a atividade não implementa efetivamente uma versão paralela.
+Assim, as discussões sobre condição de corrida, sincronização e redução são
+derivadas da estrutura do algoritmo, conforme solicitado pelo enunciado,
+e não de medições paralelas nesta atividade.
+
+
+\section{Conclusões da atividade}
+
+\label{sec:atvd04-conclusao}
+
+A implementação sequencial do método composto do trapézio foi validada
+analiticamente para todos os valores de \(N\) avaliados.
+
+O uso de \(f(x)=x^2\), aritmética \texttt{int64\_t} e subdivisões que
+mantêm \(h\) inteiro permitiu comparar exatamente o resultado calculado com
+o valor teoricamente esperado.
+
+O erro absoluto diminuiu conforme
+
+\begin{equation}
+    O(N^{-2}),
+\end{equation}
+
+em concordância com a ordem de erro do método composto do trapézio.
+
+Em relação ao custo computacional, os tempos experimentais apresentaram
+crescimento aproximadamente linear com \(N\), enquanto o custo normalizado
+permaneceu entre aproximadamente \(0.211\) e \(0.214\) ns por trapézio.
+
+A atividade também permitiu identificar a estrutura de paralelismo do
+problema. O cálculo de cada ponto
+
+\begin{equation}
+    x_i=a+ih
+\end{equation}
+
+e sua respectiva avaliação são independentes. Entretanto, a atualização do
+acumulador representa uma dependência de redução.
+
+Uma paralelização direta utilizando um único acumulador compartilhado pode
+produzir condição de corrida. A estratégia conceitualmente mais adequada é
+a utilização de acumuladores privados seguida de uma etapa de redução.
+
+Dessa forma, a atividade estabelece tanto um baseline sequencial validado
+quanto a fundamentação necessária para uma implementação paralela posterior.
+
+
+\section{Síntese para defesa oral}
+
+\label{sec:atvd04-defesa}
+
+Para uma apresentação oral, os principais pontos da atividade podem ser
+sintetizados da seguinte forma:
+
+\begin{enumerate}
+    \item A tarefa exigiu implementar somente a versão sequencial e discutir
+    teoricamente sua paralelização.
+
+    \item Foi utilizada a função
+    \[
+        f(x)=x^2
+    \]
+    no intervalo
+    \[
+        [0,2\,400\,000].
+    \]
+
+    \item O tipo \texttt{int64\_t} foi adotado para evitar efeitos de
+    arredondamento e permitir validação inteira exata.
+
+    \item O método implementado foi o trapézio composto, com
+    \[
+        x_i=a+ih.
+    \]
+    Essa forma evita dependência entre pontos consecutivos.
+
+    \item Foram utilizados sete valores de \(N\), todos divisores de
+    \(2\,400\,000\), garantindo passo \(h\) inteiro.
+
+    \item O valor exato da integral é
+    \[
+        4\,608\,000\,000\,000\,000\,000.
+    \]
+
+    \item Para \(f(x)=x^2\), o erro pode ser calculado exatamente por
+    \[
+        E_N=\frac{(b-a)h^2}{6}.
+    \]
+    Todos os resultados experimentais coincidiram com esse valor.
+
+    \item Foram realizados 3 aquecimentos e 20 medições para cada \(N\).
+
+    \item Cada medição executou 1000 chamadas do kernel. O tempo do lote foi
+    dividido por 1000 para obter o tempo equivalente de uma execução.
+
+    \item Foi utilizado
+    \texttt{clock\_gettime(CLOCK\_MONOTONIC)} para medir tempo decorrido.
+
+    \item Durante o desenvolvimento, uma primeira versão apresentou tempos
+    zerados devido a otimizações interprocedurais. O problema foi corrigido
+    utilizando \texttt{noinline}, \texttt{noipa} e consumo observável do
+    resultado.
+
+    \item A compilação utilizou \texttt{-O2}, mas a vetorização automática
+    foi desabilitada com \texttt{-fno-tree-vectorize} para preservar um
+    baseline escalar.
+
+    \item O erro diminuiu com comportamento
+    \[
+        O(N^{-2}).
+    \]
+
+    \item O tempo aumentou aproximadamente de forma linear:
+    \[
+        T(N)=O(N).
+    \]
+
+    \item O custo normalizado permaneceu próximo de
+    \[
+        0.21\ \text{ns/trap}.
+    \]
+
+    \item O cálculo de cada \(f(x_i)\) pode ser paralelizado, pois as
+    iterações são independentes.
+
+    \item A variável \texttt{soma} não pode ser atualizada ingenuamente por
+    várias threads, pois isso produziria uma condição de corrida.
+
+    \item A estratégia conceitualmente mais adequada é utilizar somas
+    privadas por thread e combinar os resultados posteriormente por uma
+    operação de redução.
+\end{enumerate}

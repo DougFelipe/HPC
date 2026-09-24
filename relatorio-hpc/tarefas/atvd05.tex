@@ -1,0 +1,1581 @@
+\chapter{Atividade 5 -- Contagem de números primos com OpenMP}
+\label{chap:atvd05}
+
+\section{Enunciado da tarefa}
+\label{sec:atvd05-enunciado}
+
+\begin{quote}
+Implemente um programa em C que conte quantos números primos existem entre 2 e um valor máximo \(n\).
+
+Depois, paralelize o laço principal utilizando a diretiva
+\texttt{\#pragma omp parallel for}. A lógica original do algoritmo não deve ser alterada.
+
+Compare o tempo de execução, os resultados da versão sequencial e os resultados da versão paralela utilizando diferentes valores de \(n\). Observe possíveis diferenças no resultado e no desempenho.
+
+Discuta também os desafios iniciais da programação paralela, considerando especialmente correção e distribuição de carga. Para a medição do tempo, utilize uma abordagem baseada em \texttt{omp\_get\_wtime()}.
+\end{quote}
+
+
+% ============================================================
+\section{Objetivos e requisitos}
+\label{sec:atvd05-objetivos}
+
+A atividade teve como objetivo investigar a transformação de um algoritmo
+sequencial simples em uma implementação paralela baseada em OpenMP,
+mantendo inalterada a lógica fundamental da computação.
+
+O problema adotado consiste em determinar a quantidade de números primos
+existentes no intervalo
+
+\[
+[2,n],
+\]
+
+para diferentes valores do limite superior \(n\).
+
+Os objetivos específicos foram:
+
+\begin{itemize}
+    \item implementar uma versão sequencial da contagem de números primos;
+    
+    \item paralelizar o laço externo de candidatos utilizando
+    \texttt{\#pragma omp parallel for};
+    
+    \item observar o efeito de uma atualização concorrente não sincronizada
+    sobre um contador compartilhado;
+    
+    \item implementar uma versão paralela correta utilizando a cláusula
+    \texttt{reduction};
+    
+    \item verificar a equivalência funcional entre a versão sequencial e a
+    versão paralela correta;
+    
+    \item medir o tempo de execução utilizando \texttt{omp\_get\_wtime()};
+    
+    \item avaliar diferentes tamanhos do problema;
+    
+    \item calcular o speedup obtido pela paralelização;
+    
+    \item discutir overhead de paralelização, condição de corrida e
+    distribuição de carga.
+\end{itemize}
+
+O número de threads foi mantido fixo em quatro durante todo o experimento.
+O objetivo, portanto, não foi estudar escalabilidade em função da quantidade
+de threads, mas isolar o efeito da paralelização do laço principal.
+
+
+% ============================================================
+\section{Fundamentação conceitual}
+\label{sec:atvd05-fundamentacao}
+
+\subsection{Teste de primalidade}
+
+Um número inteiro \(x > 1\) é primo quando seus únicos divisores positivos
+são 1 e o próprio \(x\).
+
+Uma forma direta de verificar a primalidade consiste em testar possíveis
+divisores. Não é necessário testar divisores superiores a \(\sqrt{x}\),
+pois, caso \(x\) possua um fator maior que sua raiz quadrada, necessariamente
+possuirá também um fator correspondente menor que ela.
+
+Na implementação utilizada nesta atividade, após o tratamento do número 2,
+todos os demais números pares são descartados imediatamente. Para números
+ímpares, são testados apenas divisores ímpares.
+
+A condição do laço foi expressa como
+
+\[
+d \leq \frac{x}{d},
+\]
+
+em vez de
+
+\[
+d^2 \leq x.
+\]
+
+As duas expressões são equivalentes no domínio considerado, mas a primeira
+evita a necessidade de calcular explicitamente a raiz quadrada e evita uma
+multiplicação que poderia causar overflow para valores suficientemente
+grandes.
+
+
+\subsection{Paralelismo de dados}
+
+A classificação de um candidato como primo ou não primo é independente da
+classificação dos demais candidatos.
+
+Assim,
+
+\[
+\text{primo}(i)
+\]
+
+pode ser calculado independentemente de
+
+\[
+\text{primo}(j),
+\qquad i \neq j.
+\]
+
+Essa característica torna o laço externo da contagem adequado ao
+paralelismo de dados.
+
+Conceitualmente, o espaço de candidatos pode ser distribuído entre as
+threads:
+
+\begin{verbatim}
+Thread 0  ---> parte dos candidatos
+Thread 1  ---> parte dos candidatos
+Thread 2  ---> parte dos candidatos
+Thread 3  ---> parte dos candidatos
+\end{verbatim}
+
+Cada thread executa a mesma função de primalidade sobre diferentes elementos
+do intervalo.
+
+
+\subsection{Diretiva \texttt{parallel for}}
+
+OpenMP permite distribuir automaticamente as iterações de um laço por uma
+equipe de threads por meio da diretiva
+
+\begin{verbatim}
+#pragma omp parallel for
+\end{verbatim}
+
+A diretiva combina a criação de uma região paralela com a distribuição do
+espaço de iterações do laço.
+
+Nesta atividade, apenas o laço que percorre os candidatos entre 2 e \(n\)
+foi paralelizado.
+
+
+\subsection{Laços aninhados e granularidade do paralelismo}
+
+O algoritmo apresenta naturalmente dois níveis de repetição:
+
+\begin{enumerate}
+    \item um laço externo que percorre os candidatos;
+    \item um laço interno que testa possíveis divisores.
+\end{enumerate}
+
+A modelagem adotada paralelizou somente o primeiro nível.
+
+O teste de divisores permaneceu sequencial dentro de cada thread.
+
+Portanto, a estrutura adotada foi:
+
+\begin{verbatim}
+parallel for
+|
++-- candidato 1
+|   +-- teste sequencial de divisores
+|
++-- candidato 2
+|   +-- teste sequencial de divisores
+|
++-- ...
+\end{verbatim}
+
+Não foram utilizados paralelismo aninhado ou a cláusula
+\texttt{collapse}.
+
+Essa decisão evita a criação de regiões paralelas adicionais em uma
+operação relativamente pequena e irregular e mantém o experimento alinhado
+ao objetivo do enunciado: paralelizar o laço principal.
+
+
+\subsection{Condição de corrida}
+
+A contagem utiliza uma variável global à computação lógica,
+
+\[
+\texttt{count},
+\]
+
+incrementada sempre que um número primo é encontrado.
+
+Na execução sequencial,
+
+\begin{verbatim}
+count++;
+\end{verbatim}
+
+não apresenta problema.
+
+Entretanto, em uma execução paralela, múltiplas threads podem tentar
+atualizar o mesmo contador simultaneamente.
+
+A operação de incremento pode ser entendida conceitualmente como:
+
+\begin{enumerate}
+    \item ler o valor atual;
+    \item adicionar 1;
+    \item escrever o novo valor.
+\end{enumerate}
+
+Duas threads podem, por exemplo, ler simultaneamente o mesmo valor e
+posteriormente sobrescrever uma atualização realizada pela outra.
+
+Essa situação caracteriza uma \textit{race condition}, ou condição de
+corrida.
+
+Dessa forma,
+
+\[
+\texttt{parallel for}
+\]
+
+por si só não garante a correção de um programa paralelo.
+
+
+\subsection{Redução}
+
+A operação realizada sobre o contador é uma soma de contribuições
+independentes.
+
+Cada thread pode produzir uma contagem parcial,
+
+\[
+C_0,C_1,\ldots,C_{T-1},
+\]
+
+e a contagem final é
+
+\[
+C =
+\sum_{i=0}^{T-1} C_i.
+\]
+
+Esse padrão corresponde diretamente à operação de redução disponível em
+OpenMP.
+
+A cláusula
+
+\begin{verbatim}
+reduction(+:count)
+\end{verbatim}
+
+permite que as threads trabalhem com contadores privados e que esses
+contadores sejam combinados ao término da região paralela.
+
+Dessa forma, a redução fornece simultaneamente paralelismo e correção
+funcional.
+
+
+\subsection{Distribuição de carga}
+
+Embora cada iteração do laço externo represente o teste de um candidato,
+o custo das iterações não é uniforme.
+
+Um número par pode ser eliminado quase imediatamente, enquanto um número
+primo grande pode exigir diversos testes de divisibilidade.
+
+Portanto,
+
+\[
+W(i) \neq W(j),
+\]
+
+onde \(W(x)\) representa o trabalho necessário para determinar a
+primalidade do candidato \(x\).
+
+Esse comportamento introduz a possibilidade de desequilíbrio de carga:
+uma thread pode concluir suas iterações antes das demais e permanecer
+aguardando a sincronização final.
+
+
+\subsection{Speedup}
+
+A principal métrica derivada utilizada foi o speedup,
+
+\[
+S =
+\frac{T_{\mathrm{seq}}}
+     {T_{\mathrm{omp}}},
+\]
+
+onde:
+
+\begin{itemize}
+    \item \(T_{\mathrm{seq}}\) é o tempo da versão sequencial;
+    \item \(T_{\mathrm{omp}}\) é o tempo da versão paralela correta.
+\end{itemize}
+
+Assim,
+
+\[
+S > 1
+\]
+
+indica ganho de desempenho com a paralelização, enquanto
+
+\[
+S < 1
+\]
+
+indica que o overhead paralelo foi superior ao benefício obtido.
+
+
+% ============================================================
+\section{Interpretação didática da tarefa}
+\label{sec:atvd05-interpretacao}
+
+A atividade não foi interpretada como um estudo de algoritmos avançados
+para geração de números primos.
+
+O problema de primalidade funciona como uma carga computacional simples,
+capaz de expor conceitos fundamentais de programação paralela.
+
+Por esse motivo, não foram utilizados métodos como o Crivo de Eratóstenes
+ou algoritmos distintos entre as versões.
+
+O núcleo computacional foi mantido igual, modificando-se apenas a forma
+como as iterações do laço externo são executadas.
+
+A sequência didática explorada foi:
+
+\begin{verbatim}
+Algoritmo sequencial
+        |
+        v
+parallel for
+        |
+        v
+contador compartilhado
+        |
+        v
+race condition
+        |
+        v
+reduction
+        |
+        v
+programa paralelo correto
+        |
+        v
+comparacao de desempenho
+\end{verbatim}
+
+Essa sequência evidencia um princípio fundamental de HPC: paralelizar uma
+computação não consiste apenas em criar múltiplas threads. A preservação da
+semântica do programa é requisito anterior à análise de desempenho.
+
+
+% ============================================================
+\section{Modelagem da solução}
+\label{sec:atvd05-modelagem}
+
+\subsection{Estrutura geral}
+
+Foram modeladas três versões do algoritmo.
+
+\subsubsection{Versão sequencial}
+
+A primeira implementação constitui o \textit{baseline} do experimento.
+
+Seu comportamento é:
+
+\begin{verbatim}
+para candidato = 2 ate N
+    se candidato for primo
+        count++
+\end{verbatim}
+
+Essa versão fornece tanto a referência funcional quanto a referência de
+tempo.
+
+
+\subsubsection{Versão OpenMP ingênua}
+
+A segunda versão paraleliza diretamente o laço externo, mantendo o contador
+compartilhado sem sincronização.
+
+Conceitualmente:
+
+\begin{verbatim}
+#pragma omp parallel for
+
+para candidato = 2 ate N
+    se candidato for primo
+        count++
+\end{verbatim}
+
+Essa implementação foi mantida propositalmente incorreta para demonstrar o
+efeito de uma condição de corrida.
+
+Ela participa da validação funcional, mas não do benchmark oficial de
+speedup.
+
+
+\subsubsection{Versão OpenMP com redução}
+
+A terceira implementação acrescenta a redução sobre o contador:
+
+\begin{verbatim}
+#pragma omp parallel for reduction(+:count)
+\end{verbatim}
+
+Essa é a versão paralela utilizada para a comparação válida de desempenho.
+
+
+\subsection{Principais funções e componentes}
+
+A implementação foi organizada em funções com responsabilidades distintas.
+
+\begin{center}
+\begin{tabular}{|p{0.36\textwidth}|p{0.54\textwidth}|}
+\hline
+\textbf{Componente} & \textbf{Responsabilidade} \\
+\hline
+\texttt{is\_prime()} &
+Verificar se um inteiro é primo. \\
+\hline
+\texttt{count\_primes\_sequential()} &
+Realizar a contagem sequencial entre 2 e \(n\). \\
+\hline
+\texttt{count\_primes\_parallel\_naive()} &
+Executar o laço com OpenMP mantendo a condição de corrida proposital. \\
+\hline
+\texttt{count\_primes\_parallel\_reduction()} &
+Executar a versão paralela funcionalmente correta utilizando
+\texttt{reduction}. \\
+\hline
+\texttt{validate\_is\_prime()} &
+Validar casos conhecidos da função de primalidade. \\
+\hline
+\texttt{get\_actual\_thread\_count()} &
+Confirmar a quantidade efetivamente criada de threads. \\
+\hline
+\texttt{run\_timed\_batch()} &
+Executar lotes cronometrados de chamadas da função de contagem. \\
+\hline
+\texttt{calibrate\_internal\_repetitions()} &
+Determinar automaticamente o número de repetições internas necessário
+para produzir lotes mensuráveis. \\
+\hline
+\texttt{run\_warmups()} &
+Realizar aquecimentos anteriores às medições oficiais. \\
+\hline
+\texttt{measure\_per\_execution()} &
+Converter o tempo total do lote no tempo equivalente a uma execução. \\
+\hline
+\texttt{calculate\_median()} &
+Calcular a mediana das vinte medições. \\
+\hline
+\texttt{main()} &
+Coordenar configuração, validação, benchmark e apresentação dos resultados. \\
+\hline
+\end{tabular}
+\end{center}
+
+
+% ============================================================
+\section{Decisões de projeto e trade-offs}
+\label{sec:atvd05-decisoes}
+
+\subsection{Preservação do algoritmo}
+
+As versões sequencial e paralela utilizam exatamente a mesma função
+\texttt{is\_prime()}.
+
+Isso impede que eventuais diferenças de desempenho sejam atribuídas à
+utilização de algoritmos distintos.
+
+A variável experimental permanece sendo a estratégia de execução.
+
+
+\subsection{Paralelização somente do laço externo}
+
+A opção por não paralelizar o teste interno de divisores reduz o overhead e
+evita a criação de paralelismo aninhado.
+
+O laço externo apresenta unidades de trabalho independentes e constitui o
+nível natural de distribuição entre as threads.
+
+
+\subsection{Uso de \texttt{reduction} em vez de
+\texttt{critical} ou \texttt{atomic}}
+
+Seria possível proteger o incremento do contador por meio de mecanismos
+como \texttt{critical} ou \texttt{atomic}.
+
+Entretanto, ambos introduziriam sincronização sobre atualizações
+individuais.
+
+Como o problema consiste em somar contribuições independentes,
+\texttt{reduction} representa diretamente a operação matemática necessária
+e permite acumulação privada por thread.
+
+Por esse motivo, foi adotada como solução principal.
+
+
+\subsection{Escalonamento estático}
+
+A versão paralela foi executada com
+
+\begin{verbatim}
+schedule(static)
+\end{verbatim}
+
+durante todo o experimento.
+
+Essa decisão mantém a política de distribuição fixa e reproduzível e evita
+introduzir uma segunda variável experimental.
+
+O trade-off é que a distribuição estática de quantidades semelhantes de
+iterações não garante distribuição uniforme de trabalho, pois os testes de
+primalidade possuem custos distintos.
+
+
+\subsection{Quatro threads fixas}
+
+O número de threads foi fixado em quatro.
+
+A atividade não foi transformada em um estudo de escalabilidade em função
+do número de threads.
+
+Essa decisão permite atribuir as diferenças observadas principalmente à
+mudança entre execução sequencial e paralela.
+
+
+\subsection{Repetições internas}
+
+Uma primeira execução experimental mostrou que, para \(n=10\,000\), os
+tempos individuais eram inferiores à resolução prática observada da
+temporização, resultando em valores apresentados como zero e,
+consequentemente, em um speedup indefinido.
+
+A solução adotada foi agrupar várias execuções da mesma função em um único
+lote cronometrado.
+
+Para \(R\) repetições,
+
+\[
+T_{\mathrm{exec}}
+=
+\frac{T_{\mathrm{lote}}}{R}.
+\]
+
+O número de repetições é calibrado automaticamente até que as versões
+sequencial e paralela produzam lotes de aproximadamente pelo menos
+\(100\,\mathrm{ms}\).
+
+Essa estratégia preserva o algoritmo original e melhora a qualidade da
+medição de cargas pequenas.
+
+
+\subsection{Mediana como estatística principal}
+
+Cada configuração foi medida vinte vezes.
+
+Foi utilizada a mediana em vez de uma única execução ou do menor tempo
+observado.
+
+Para vinte valores ordenados,
+
+\[
+t_{(1)} \leq t_{(2)} \leq \cdots \leq t_{(20)},
+\]
+
+a mediana utilizada é
+
+\[
+\widetilde{T}
+=
+\frac{t_{(10)}+t_{(11)}}{2}.
+\]
+
+A mediana reduz a influência de interrupções ocasionais e outros
+\textit{outliers} produzidos pelo sistema operacional.
+
+
+% ============================================================
+\section{Representação estrutural da implementação}
+\label{sec:atvd05-estrutura}
+
+A organização lógica do programa pode ser representada da seguinte forma:
+
+\begin{verbatim}
+                         +------------------+
+                         |       main       |
+                         +---------+--------+
+                                   |
+              +--------------------+--------------------+
+              |                    |                    |
+              v                    v                    v
+       validacao inicial     configuracao OMP      valores de N
+              |                    |
+              |              threads = 4
+              |              dynamic = off
+              |
+              v
+        +-----------+
+        | is_prime  |
+        +-----+-----+
+              |
+       +------+------+----------------+
+       |             |                |
+       v             v                v
+  sequencial     OMP ingenua     OMP reduction
+       |             |                |
+       |        race condition        |
+       |                              |
+       +---------------+--------------+
+                       |
+                       v
+                 validacao
+                       |
+                       v
+             benchmark das versoes
+                 funcionalmente
+                    corretas
+                       |
+                       v
+                  mediana
+                       |
+                       v
+                   speedup
+\end{verbatim}
+
+A função de primalidade é compartilhada pelas três versões, evitando
+diferenças algorítmicas entre as implementações.
+
+
+% ============================================================
+\section{Fluxo de execução}
+\label{sec:atvd05-fluxo}
+
+O fluxo experimental implementado foi:
+
+\begin{verbatim}
+INICIO
+  |
+  v
+Configurar OpenMP
+  |
+  +-- desabilitar ajuste dinamico
+  +-- definir 4 threads
+  |
+  v
+Validar is_prime()
+  |
+  v
+Confirmar numero real de threads
+  |
+  v
+Para cada N
+  |
+  +-- executar sequencial
+  |
+  +-- executar OpenMP ingenua
+  |
+  +-- executar OpenMP reduction
+  |
+  +-- validar sequencial contra valor conhecido
+  |
+  +-- validar reduction contra sequencial
+  |
+  v
+Imprimir tabela de validacao
+  |
+  v
+Para cada N
+  |
+  +-- calibrar repeticoes internas
+  |
+  +-- executar 3 warm-ups
+  |
+  +-- realizar 20 medicoes
+  |      |
+  |      +-- alternar SEQ -> OMP
+  |      +-- alternar OMP -> SEQ
+  |
+  +-- calcular mediana
+  |
+  +-- calcular speedup
+  |
+  +-- imprimir resultado
+  |
+  v
+FIM
+\end{verbatim}
+
+
+% ============================================================
+\section{Metodologia experimental}
+\label{sec:atvd05-metodologia}
+
+\subsection{Ambiente de execução}
+
+A atividade foi executada em ambiente Windows com MSYS2 utilizando o
+subsistema UCRT64.
+
+O compilador validado foi:
+
+\begin{itemize}
+    \item GCC 15.1.0;
+    \item executável \texttt{/ucrt64/bin/gcc};
+    \item alvo \texttt{x86\_64-w64-mingw32};
+    \item runtime OpenMP \texttt{libgomp};
+    \item macro \texttt{\_OPENMP = 201511}, correspondente ao suporte
+    a OpenMP 4.5.
+\end{itemize}
+
+A compilação foi realizada com:
+
+\begin{verbatim}
+gcc -std=c11 -O2 -Wall -Wextra -Wpedantic \
+    -fopenmp tarefa5.c -o tarefa5.exe
+\end{verbatim}
+
+O mesmo executável contém as versões sequencial e paralela, garantindo o
+mesmo compilador e o mesmo nível de otimização para todas as comparações.
+
+
+\subsection{Valores de entrada}
+
+Foram utilizados cinco valores para o limite superior:
+
+\[
+n \in
+\left\{
+10^4,
+10^5,
+10^6,
+5\times10^6,
+10^7
+\right\}.
+\]
+
+As respectivas contagens conhecidas de números primos foram:
+
+\begin{center}
+\begin{tabular}{|r|r|}
+\hline
+\textbf{\(n\)} & \textbf{Quantidade de primos} \\
+\hline
+10\,000 & 1\,229 \\
+100\,000 & 9\,592 \\
+1\,000\,000 & 78\,498 \\
+5\,000\,000 & 348\,513 \\
+10\,000\,000 & 664\,579 \\
+\hline
+\end{tabular}
+\end{center}
+
+
+\subsection{Configuração das medições}
+
+A configuração experimental utilizada foi:
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Parâmetro} & \textbf{Configuração} \\
+\hline
+Threads OpenMP & 4 \\
+\hline
+Escalonamento & \texttt{static} \\
+\hline
+Aquecimentos & 3 \\
+\hline
+Medições & 20 \\
+\hline
+Estatística & mediana \\
+\hline
+Relógio & \texttt{omp\_get\_wtime()} \\
+\hline
+Lote mínimo de temporização & aproximadamente 100 ms \\
+\hline
+Otimização & \texttt{-O2} \\
+\hline
+\end{tabular}
+\end{center}
+
+
+\subsection{Região cronometrada}
+
+Somente a operação de contagem de primos foi incluída na região
+cronometrada.
+
+A estrutura utilizada foi equivalente a:
+
+\begin{verbatim}
+inicio = omp_get_wtime();
+
+executar contagem;
+
+fim = omp_get_wtime();
+\end{verbatim}
+
+Na versão OpenMP, isso inclui o custo efetivo de:
+
+\begin{itemize}
+    \item entrada na região paralela;
+    \item distribuição das iterações;
+    \item execução das threads;
+    \item redução dos resultados;
+    \item sincronização final.
+\end{itemize}
+
+Foram mantidos fora da região medida:
+
+\begin{itemize}
+    \item impressão dos resultados;
+    \item cálculo da mediana;
+    \item cálculo do speedup;
+    \item comparação funcional;
+    \item configuração do OpenMP.
+\end{itemize}
+
+
+\subsection{Aquecimentos}
+
+Antes das medições oficiais foram executados três aquecimentos por
+configuração.
+
+Essa etapa reduz a influência da primeira ativação do runtime OpenMP e de
+efeitos transitórios da execução inicial.
+
+
+\subsection{Alternância da ordem}
+
+Para reduzir viés sistemático de ordem, as versões foram alternadas entre
+as medições.
+
+O padrão utilizado foi:
+
+\begin{verbatim}
+medicao 1:  SEQ -> OMP
+medicao 2:  OMP -> SEQ
+medicao 3:  SEQ -> OMP
+medicao 4:  OMP -> SEQ
+...
+\end{verbatim}
+
+Dessa forma, nenhuma implementação é sistematicamente beneficiada ou
+prejudicada por ser executada sempre primeiro.
+
+
+\subsection{Calibração das repetições internas}
+
+O número de repetições internas foi determinado automaticamente por
+duplicação:
+
+\[
+1,2,4,8,16,\ldots
+\]
+
+até que os lotes das implementações válidas alcançassem a duração mínima
+estabelecida.
+
+A mesma quantidade de repetições foi utilizada para as duas versões dentro
+de cada valor de \(n\).
+
+Os tempos apresentados correspondem ao tempo normalizado de uma única
+contagem.
+
+
+\subsection{Prevenção de eliminação da computação}
+
+O resultado da computação possui efeito observável e é posteriormente
+validado.
+
+Além disso, o \textit{harness} de benchmark utiliza um valor protegido para
+o limite \(n\) durante as repetições internas.
+
+Não foi utilizado \texttt{volatile} no algoritmo de primalidade propriamente
+dito, evitando alterar artificialmente seu comportamento de otimização.
+
+
+% ============================================================
+\section{Código-fonte desenvolvido}
+\label{sec:atvd05-codigo}
+
+\lstinputlisting[
+    style=codigoC,
+    caption={Código-fonte da Atividade 5.},
+    label={lst:atvd05-codigo}
+]{../ATVD5/tarefa5.c}
+
+
+% ============================================================
+\section{Validação da implementação}
+\label{sec:atvd05-validacao}
+
+A validação foi realizada em três níveis.
+
+
+\subsection{Validação da função de primalidade}
+
+A função \texttt{is\_prime()} foi testada utilizando casos conhecidos,
+incluindo números primos, compostos e valores inferiores a 2.
+
+Entre os casos utilizados estavam:
+
+\[
+0,\ 1,\ 2,\ 3,\ 4,\ 5,\ 9,\ 17,\ 25.
+\]
+
+
+\subsection{Validação por contagens conhecidas}
+
+A contagem sequencial foi comparada com valores conhecidos de
+\(\pi(n)\), onde \(\pi(n)\) representa a quantidade de primos menores ou
+iguais a \(n\).
+
+Todas as cinco entradas utilizadas no experimento produziram os valores
+esperados.
+
+
+\subsection{Comparação entre as versões}
+
+Os resultados obtidos foram:
+
+\begin{center}
+\small
+\begin{tabular}{|r|r|r|r|l|}
+\hline
+\textbf{\(N\)} &
+\textbf{Sequencial} &
+\textbf{OMP ingênua} &
+\textbf{OMP reduction} &
+\textbf{Status ingênua} \\
+\hline
+10\,000
+& 1\,229
+& 279
+& 1\,229
+& incorreta \\
+\hline
+
+100\,000
+& 9\,592
+& 2\,199
+& 9\,592
+& incorreta \\
+\hline
+
+1\,000\,000
+& 78\,498
+& 18\,260
+& 78\,498
+& incorreta \\
+\hline
+
+5\,000\,000
+& 348\,513
+& 81\,795
+& 348\,513
+& incorreta \\
+\hline
+
+10\,000\,000
+& 664\,579
+& 156\,318
+& 664\,579
+& incorreta \\
+\hline
+\end{tabular}
+\end{center}
+
+A versão sequencial e a versão com redução coincidiram em todos os casos:
+
+\[
+C_{\mathrm{seq}}(n)
+=
+C_{\mathrm{reduction}}(n).
+\]
+
+A implementação ingênua apresentou contagens inferiores em todos os
+tamanhos testados.
+
+Isso confirma experimentalmente a presença da condição de corrida.
+
+Os valores produzidos pela versão ingênua não devem ser interpretados como
+uma fração determinística da resposta correta. Uma condição de corrida não
+oferece garantia sobre o valor final, mesmo que resultados semelhantes
+possam ocorrer em execuções realizadas sob as mesmas condições.
+
+
+% ============================================================
+\section{Resultados experimentais}
+\label{sec:atvd05-resultados}
+
+Após a calibração temporal e a execução das vinte medições por configuração,
+foram obtidos os seguintes resultados finais.
+
+\begin{center}
+\small
+\begin{tabular}{|r|r|r|r|r|r|}
+\hline
+\textbf{\(N\)} &
+\textbf{Primos} &
+\textbf{Reps} &
+\textbf{Seq. (ms)} &
+\textbf{OpenMP (ms)} &
+\textbf{Speedup} \\
+\hline
+
+10\,000
+& 1\,229
+& 512
+& 0,282
+& 0,195
+& 1,45$\times$ \\
+\hline
+
+100\,000
+& 9\,592
+& 64
+& 5,836
+& 2,984
+& 1,96$\times$ \\
+\hline
+
+1\,000\,000
+& 78\,498
+& 2
+& 170,250
+& 72,500
+& 2,35$\times$ \\
+\hline
+
+5\,000\,000
+& 348\,513
+& 1
+& 1\,262,000
+& 603,000
+& 2,09$\times$ \\
+\hline
+
+10\,000\,000
+& 664\,579
+& 1
+& 3\,397,000
+& 1\,610,000
+& 2,11$\times$ \\
+\hline
+\end{tabular}
+\end{center}
+
+Os valores de \texttt{Reps} correspondem ao número de execuções internas
+utilizadas em cada lote de temporização.
+
+O valor reportado nas colunas de tempo continua correspondendo a uma única
+execução, pois o tempo total do lote foi normalizado pelo número de
+repetições.
+
+
+% ============================================================
+\section{Visualização dos resultados}
+\label{sec:atvd05-visualizacao}
+
+A evolução do speedup pode ser resumida por:
+
+\begin{center}
+\begin{tabular}{|r|c|}
+\hline
+\textbf{\(N\)} & \textbf{Speedup} \\
+\hline
+10\,000 & 1,45$\times$ \\
+100\,000 & 1,96$\times$ \\
+1\,000\,000 & 2,35$\times$ \\
+5\,000\,000 & 2,09$\times$ \\
+10\,000\,000 & 2,11$\times$ \\
+\hline
+\end{tabular}
+\end{center}
+
+Uma representação textual da tendência observada é:
+
+\begin{verbatim}
+Speedup
+
+2.5 |                     *
+    |
+2.0 |          *                    *          *
+    |
+1.5 |    *
+    |
+1.0 +------------------------------------------------
+        10^4     10^5      10^6      5x10^6     10^7
+
+                         N
+\end{verbatim}
+
+O maior speedup da execução final foi observado em
+
+\[
+N=1\,000\,000,
+\]
+
+com
+
+\[
+S=2,35\times.
+\]
+
+Nos dois maiores tamanhos avaliados, os valores observados ficaram próximos
+de
+
+\[
+2,1\times.
+\]
+
+
+% ============================================================
+\section{Análise e discussão}
+\label{sec:atvd05-discussao}
+
+\subsection{Correção da versão sequencial}
+
+A implementação sequencial produziu exatamente as contagens conhecidas para
+todos os valores de entrada avaliados.
+
+Isso estabelece uma referência funcional confiável para a comparação com
+as implementações paralelas.
+
+
+\subsection{Falha da paralelização ingênua}
+
+A inclusão de
+
+\begin{verbatim}
+#pragma omp parallel for
+\end{verbatim}
+
+sem tratamento adicional do contador compartilhado produziu resultados
+incorretos em todos os tamanhos avaliados.
+
+Por exemplo, para
+
+\[
+N=10\,000\,000,
+\]
+
+a resposta correta foi
+
+\[
+664\,579,
+\]
+
+enquanto a versão ingênua retornou
+
+\[
+156\,318.
+\]
+
+A diferença não decorre da função de primalidade, pois o mesmo
+\texttt{is\_prime()} é utilizado nas três versões.
+
+A causa está na atualização concorrente de \texttt{count}.
+
+Dessa forma, o experimento demonstra concretamente que:
+
+\[
+\boxed{
+\text{paralelização sintaticamente válida}
+\not\Rightarrow
+\text{programa funcionalmente correto}
+}
+\]
+
+
+\subsection{Correção por redução}
+
+A versão com
+
+\begin{verbatim}
+reduction(+:count)
+\end{verbatim}
+
+reproduziu exatamente a contagem sequencial para todas as entradas.
+
+Isso ocorre porque OpenMP mantém contribuições parciais das threads e as
+combina por soma ao final da região paralela.
+
+Portanto, a redução corresponde diretamente à estrutura matemática do
+problema.
+
+
+\subsection{Efeito do tamanho do problema}
+
+Para \(N=10\,000\), o speedup foi:
+
+\[
+S=1,45\times.
+\]
+
+Embora a versão paralela já tenha sido mais rápida, o benefício foi menor
+que nos tamanhos intermediários.
+
+Isso é coerente com o efeito do overhead paralelo.
+
+O tempo da implementação OpenMP pode ser representado conceitualmente por:
+
+\[
+T_{\mathrm{omp}}
+=
+T_{\mathrm{computacao}}
++
+T_{\mathrm{overhead}},
+\]
+
+onde o segundo termo inclui custos de gerenciamento da região paralela,
+distribuição das iterações, redução e sincronização.
+
+Quando o problema é pequeno, esse custo representa parcela proporcionalmente
+maior do tempo total.
+
+
+\subsection{Speedup observado}
+
+Os speedups obtidos foram:
+
+\[
+1,45\times,\quad
+1,96\times,\quad
+2,35\times,\quad
+2,09\times,\quad
+2,11\times.
+\]
+
+A melhor aceleração observada ocorreu para
+
+\[
+N=10^6,
+\]
+
+com
+
+\[
+S=2,35\times.
+\]
+
+Nos dois maiores tamanhos, os ganhos ficaram próximos de
+\(2,1\times\).
+
+A utilização de quatro threads não implica um speedup de \(4\times\).
+
+Para atingir o speedup ideal seria necessário, entre outros fatores:
+
+\begin{itemize}
+    \item ausência de overhead de paralelização;
+    \item trabalho perfeitamente balanceado;
+    \item ausência de sincronização;
+    \item disponibilidade integral dos recursos computacionais.
+\end{itemize}
+
+Essas condições não ocorrem no experimento real.
+
+
+\subsection{Distribuição de carga}
+
+A política utilizada foi \texttt{schedule(static)}.
+
+Ela distribui previamente conjuntos de iterações entre as threads e possui
+baixo overhead.
+
+Entretanto, igual quantidade de candidatos não corresponde necessariamente
+a igual quantidade de trabalho.
+
+Um número par pode ser rejeitado rapidamente, enquanto um primo grande pode
+exigir testes de diversos divisores.
+
+Além disso, candidatos maiores apresentam um limite potencial de teste
+também maior.
+
+Assim,
+
+\[
+\text{mesmo número de iterações}
+\not\Rightarrow
+\text{mesma carga computacional}.
+\]
+
+Consequentemente, algumas threads podem terminar seus blocos antes de outras
+e permanecer aguardando a barreira implícita do final do
+\texttt{parallel for}.
+
+Esse desequilíbrio contribui para limitar o speedup observado.
+
+
+\subsection{Crescimento do custo sequencial}
+
+Os tempos sequenciais cresceram de
+
+\[
+0,282\,\mathrm{ms}
+\]
+
+para
+
+\[
+3397\,\mathrm{ms}
+\]
+
+ao longo da faixa avaliada.
+
+O crescimento não é linear em \(N\), pois o custo de testar um candidato
+também cresce com seu valor e depende de seus fatores.
+
+Dessa forma, aumentar \(N\) aumenta simultaneamente:
+
+\begin{enumerate}
+    \item a quantidade de candidatos avaliados;
+    \item o custo potencial de algumas avaliações individuais.
+\end{enumerate}
+
+
+\subsection{Efeito da calibração temporal}
+
+A calibração das repetições internas mostrou-se necessária para os menores
+valores de \(N\).
+
+As quantidades finais foram:
+
+\[
+512,\ 64,\ 2,\ 1,\ 1.
+\]
+
+Isso produz o comportamento esperado:
+
+\[
+N \uparrow
+\quad\Rightarrow\quad
+T_{\mathrm{execucao}} \uparrow
+\quad\Rightarrow\quad
+R \downarrow.
+\]
+
+Para os dois maiores tamanhos, uma única contagem já possui duração
+suficiente para a medição.
+
+A técnica eliminou o problema inicialmente observado de tempos reportados
+como zero para cargas pequenas sem alterar o algoritmo que estava sendo
+comparado.
+
+
+% ============================================================
+\section{Limitações e ameaças à validade}
+\label{sec:atvd05-limitacoes}
+
+Os resultados devem ser interpretados considerando algumas limitações.
+
+\subsection{Uma única máquina}
+
+As medições correspondem ao ambiente utilizado na atividade.
+
+Arquiteturas diferentes podem apresentar outros níveis de speedup em razão
+de diferenças no número de núcleos, memória, frequência, sistema operacional
+e implementação do runtime OpenMP.
+
+
+\subsection{Número fixo de threads}
+
+Foram utilizadas quatro threads em todas as execuções.
+
+Portanto, a atividade não permite concluir sobre escalabilidade para
+quantidades maiores ou menores de threads.
+
+
+\subsection{Política de escalonamento fixa}
+
+Apenas \texttt{schedule(static)} foi utilizado.
+
+Outras políticas de OpenMP podem responder diferentemente ao custo
+irregular das iterações.
+
+A comparação entre políticas de escalonamento não fazia parte do escopo
+experimental desta atividade.
+
+
+\subsection{Interferência do sistema operacional}
+
+Mesmo com aquecimentos e múltiplas medições, processos externos,
+escalonamento do sistema operacional, alterações de frequência da CPU e
+condições térmicas podem introduzir variação temporal.
+
+A utilização da mediana reduz, mas não elimina completamente, esse efeito.
+
+
+\subsection{Ausência de afinidade explícita}
+
+Não foi implementado controle explícito de afinidade de threads aos
+processadores.
+
+A localização efetiva das threads foi, portanto, determinada pelo runtime e
+pelo sistema operacional.
+
+
+\subsection{Versão ingênua}
+
+A versão com condição de corrida foi mantida exclusivamente para
+demonstração.
+
+Seus resultados não podem ser utilizados para avaliação de desempenho
+válida, pois ela não preserva a semântica do programa sequencial.
+
+Uma implementação incorreta não pode ser considerada uma otimização mesmo
+quando executa em menor tempo.
+
+
+\subsection{Resolução temporal}
+
+A primeira modelagem baseada em uma única contagem por medição mostrou-se
+insuficiente para os menores valores de \(N\).
+
+A utilização posterior de lotes calibrados mitigou essa limitação, mas
+também tornou necessário normalizar o tempo pela quantidade de repetições.
+
+
+% ============================================================
+\section{Conclusões da atividade}
+\label{sec:atvd05-conclusao}
+
+A atividade demonstrou que o laço externo da contagem de números primos é
+adequado ao paralelismo de dados, pois os diferentes candidatos podem ser
+avaliados independentemente.
+
+Entretanto, a simples aplicação de
+
+\begin{verbatim}
+#pragma omp parallel for
+\end{verbatim}
+
+não foi suficiente para preservar a correção.
+
+A atualização concorrente do contador introduziu uma condição de corrida,
+produzindo resultados incorretos para todos os tamanhos avaliados.
+
+A utilização de
+
+\begin{verbatim}
+reduction(+:count)
+\end{verbatim}
+
+eliminou esse problema e fez com que a implementação OpenMP reproduzisse
+exatamente os resultados da versão sequencial.
+
+Após a validação funcional, a comparação de desempenho mostrou benefício
+consistente da paralelização.
+
+Os speedups observados variaram entre
+
+\[
+1,45\times
+\]
+
+e
+
+\[
+2,35\times.
+\]
+
+O melhor resultado foi obtido para \(N=10^6\), enquanto os dois maiores
+problemas apresentaram ganhos próximos de \(2,1\times\).
+
+A atividade também evidenciou que o desempenho paralelo depende não apenas
+da quantidade de threads, mas de fatores como overhead, granularidade,
+sincronização e balanceamento de carga.
+
+Finalmente, a necessidade de calibração temporal para cargas pequenas
+demonstrou que a metodologia de benchmark também constitui parte essencial
+de uma avaliação de desempenho: medições rápidas demais podem ser dominadas
+pela resolução do relógio e produzir conclusões inadequadas.
+
+
+% ============================================================
+\section{Síntese para defesa oral}
+\label{sec:atvd05-defesa}
+
+Os principais pontos para apresentação oral da atividade são:
+
+\begin{enumerate}
+    \item \textbf{Problema:}
+    contar quantos números primos existem entre 2 e \(N\).
+
+    \item \textbf{Algoritmo-base:}
+    o mesmo teste de primalidade foi utilizado em todas as versões para
+    garantir uma comparação justa.
+
+    \item \textbf{Paralelização:}
+    somente o laço externo dos candidatos foi paralelizado.
+    O laço interno dos divisores permaneceu sequencial.
+
+    \item \textbf{Versões:}
+    foram implementadas uma versão sequencial, uma versão OpenMP ingênua e
+    uma versão OpenMP com \texttt{reduction}.
+
+    \item \textbf{Problema da versão ingênua:}
+    múltiplas threads atualizam \texttt{count++} simultaneamente,
+    produzindo uma condição de corrida.
+
+    \item \textbf{Evidência da condição de corrida:}
+    para \(N=10^7\), a contagem correta foi \(664\,579\), enquanto a versão
+    ingênua retornou \(156\,318\).
+
+    \item \textbf{Correção:}
+    a versão com \texttt{reduction} coincidiu com a versão sequencial para
+    todos os cinco valores de \(N\).
+
+    \item \textbf{Threads:}
+    foram utilizadas quatro threads fixas, com ajuste dinâmico desabilitado.
+
+    \item \textbf{Scheduling:}
+    foi utilizado \texttt{schedule(static)} em toda a atividade para manter
+    essa variável controlada.
+
+    \item \textbf{Temporização:}
+    foi utilizado \texttt{omp\_get\_wtime()}.
+
+    \item \textbf{Metodologia:}
+    foram utilizados 3 warm-ups, 20 medições e a mediana como estatística
+    principal.
+
+    \item \textbf{Problema de resolução temporal:}
+    execuções pequenas inicialmente produziram tempos iguais a zero.
+    O problema foi corrigido por repetição interna calibrada até lotes de
+    aproximadamente 100 ms.
+
+    \item \textbf{Speedup:}
+    foi calculado por
+    \[
+    S=\frac{T_{\mathrm{seq}}}{T_{\mathrm{omp}}}.
+    \]
+
+    \item \textbf{Resultado de desempenho:}
+    os speedups finais foram
+    \[
+    1,45\times,\;
+    1,96\times,\;
+    2,35\times,\;
+    2,09\times,\;
+    2,11\times.
+    \]
+
+    \item \textbf{Melhor speedup observado:}
+    \[
+    2,35\times
+    \]
+    para \(N=1\,000\,000\).
+
+    \item \textbf{Por que quatro threads não geraram \(4\times\):}
+    existem overhead de OpenMP, sincronização, competição por recursos e
+    desequilíbrio de carga.
+
+    \item \textbf{Distribuição de carga:}
+    candidatos diferentes possuem custos diferentes; números compostos
+    simples podem terminar rapidamente, enquanto primos grandes demandam
+    mais testes.
+
+    \item \textbf{Conclusão principal:}
+    primeiro é necessário garantir correção; somente depois faz sentido
+    avaliar desempenho. A versão com \texttt{reduction} foi simultaneamente
+    correta e mais rápida que a implementação sequencial nos tamanhos
+    avaliados.
+\end{enumerate}
