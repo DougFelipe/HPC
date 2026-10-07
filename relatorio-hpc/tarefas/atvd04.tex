@@ -282,14 +282,30 @@ essa variável simultaneamente, produzindo uma condição de corrida.
 
 O problema pode ser representado conceitualmente como
 
-\begin{verbatim}
-Thread 1 ----> soma += valor_1
-Thread 2 ----> soma += valor_2
-Thread 3 ----> soma += valor_3
-                         |
-                         v
-               acumulador compartilhado
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[node distance=0.65cm and 0.7cm, font=\small]
+        \node[thread, text width=2.7cm] (t1)
+            {Thread 1\\\texttt{soma += valor\_1}};
+        \node[thread, below=of t1, text width=2.7cm] (t2)
+            {Thread 2\\\texttt{soma += valor\_2}};
+        \node[thread, below=of t2, text width=2.7cm] (t3)
+            {Thread 3\\\texttt{soma += valor\_3}};
+
+        \node[componente, right=1.4cm of t2, text width=3.4cm] (soma)
+            {Acumulador compartilhado\\\texttt{soma}};
+        \node[decisao, below=0.8cm of soma, text width=2.7cm] (race)
+            {Condição\\de corrida};
+
+        \draw[fluxo] (t1.east) -- (soma.west);
+        \draw[fluxo] (t2.east) -- (soma.west);
+        \draw[fluxo] (t3.east) -- (soma.west);
+        \draw[fluxo] (soma) -- (race);
+    \end{tikzpicture}
+
+    \caption{Atualização concorrente ingênua do acumulador compartilhado.}
+    \label{fig:atvd04-corrida-soma}
+\end{figure}
 
 Uma estratégia mais apropriada consistiria em utilizar acumuladores privados
 
@@ -325,6 +341,33 @@ A solução foi organizada em quatro etapas principais:
     \item realização dos aquecimentos e medições temporais;
     \item validação matemática e apresentação dos resultados.
 \end{enumerate}
+
+A Figura~\ref{fig:atvd04-modelagem} resume essa modelagem em termos de
+etapas e responsabilidades.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[node distance=0.65cm, font=\small]
+        \node[processo, text width=5.0cm] (problema)
+            {Definir problema\\\(f(x)=x^2\), \([a,b]\) e \(N\)};
+        \node[componente, below=of problema, text width=5.0cm] (kernel)
+            {Executar kernel sequencial\\\texttt{integral\_trapezio()}};
+        \node[componente, below=of kernel, text width=5.0cm] (medicao)
+            {Aquecimentos e medições\\\texttt{CLOCK\_MONOTONIC}};
+        \node[componente, below=of medicao, text width=5.0cm] (validacao)
+            {Validar resultado\\erro analítico e mediana};
+        \node[componente, below=of validacao, text width=5.0cm] (saida)
+            {Apresentar métricas\\tempo, erro e ns/trap};
+
+        \draw[fluxo] (problema) -- (kernel);
+        \draw[fluxo] (kernel) -- (medicao);
+        \draw[fluxo] (medicao) -- (validacao);
+        \draw[fluxo] (validacao) -- (saida);
+    \end{tikzpicture}
+
+    \caption{Modelagem UML da solução sequencial da Atividade 4.}
+    \label{fig:atvd04-modelagem}
+\end{figure}
 
 Os valores de \(N\) utilizados foram
 
@@ -561,38 +604,35 @@ simplificada da implementação.
 
 \begin{figure}[htbp]
     \centering
-    \begin{minipage}{0.88\textwidth}
-\begin{verbatim}
-main
- |
- +-- define os valores de N
- |
- +-- imprime a configuracao experimental
- |
- +-- para cada N
-       |
-       +-- executar_benchmark
-             |
-             +-- 3 aquecimentos
-             |     |
-             |     +-- integral_trapezio
-             |
-             +-- 20 medicoes
-             |     |
-             |     +-- 1000 chamadas do kernel
-             |     +-- CLOCK_MONOTONIC
-             |
-             +-- calcular_mediana
-             |
-             +-- resultado_esperado
-             |
-             +-- validar resultado
-             |
-             +-- calcular erro e ns/trap
-             |
-             +-- imprimir resultado
-\end{verbatim}
-    \end{minipage}
+    \resizebox{0.96\textwidth}{!}{%
+    \begin{tikzpicture}[node distance=0.8cm and 0.7cm, font=\small]
+        \node[processo, text width=3.4cm] (main)
+            {\texttt{main()}\\valores de \(N\)\\configuração};
+
+        \node[componente, right=of main, text width=3.8cm] (bench)
+            {\texttt{executar\_benchmark()}\\coordena cada caso};
+
+        \node[componente, below left=of bench, text width=3.4cm] (warmup)
+            {3 aquecimentos\\descartados};
+        \node[componente, below=of bench, text width=3.4cm] (medicoes)
+            {20 medições\\1000 chamadas};
+        \node[componente, below right=of bench, text width=3.4cm] (pos)
+            {mediana, validação\\erro e ns/trap};
+
+        \node[processo, below=of medicoes, text width=3.6cm] (kernel)
+            {\texttt{integral\_trapezio()}\\kernel sequencial};
+        \node[componente, right=of pos, text width=3.3cm] (saida)
+            {impressão\\dos resultados};
+
+        \draw[fluxo] (main) -- (bench);
+        \draw[fluxo] (bench) -- (warmup);
+        \draw[fluxo] (bench) -- (medicoes);
+        \draw[fluxo] (bench) -- (pos);
+        \draw[fluxo] (warmup) |- (kernel);
+        \draw[fluxo] (medicoes) -- (kernel);
+        \draw[fluxo] (pos) -- (saida);
+    \end{tikzpicture}%
+    }
 
     \caption{Estrutura geral da implementação da Atividade 4.}
     \label{fig:atvd04-estrutura}
@@ -606,60 +646,44 @@ main
 O fluxo experimental é apresentado na
 Figura~\ref{fig:atvd04-fluxo}.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
     \centering
-    \begin{minipage}{0.88\textwidth}
-\begin{verbatim}
-              Inicio
-                |
-                v
-      Configuracao experimental
-                |
-                v
-        Selecionar valor de N
-                |
-                v
-         3 aquecimentos
-                |
-                v
-      +----------------------+
-      | 20 medicoes validas  |
-      |                      |
-      | t0                   |
-      | 1000 x kernel        |
-      | t1                   |
-      +----------------------+
-                |
-                v
-        Calcular mediana
-                |
-                v
- Normalizar tempo por execucao
-                |
-                v
-      Validar resultado
-                |
-          +-----+-----+
-          |           |
-       correto     incorreto
-          |           |
-          v           v
- Calcular metricas   abortar
-          |
-          v
-    Imprimir resultado
-          |
-          v
-     Existe outro N?
-          |
-     +----+----+
-     |         |
-    sim       nao
-     |         |
-     +---->    v
-             Fim
-\end{verbatim}
-    \end{minipage}
+    \begin{tikzpicture}[node distance=0.48cm and 0.8cm, font=\small]
+        \node[processo, text width=3.8cm] (inicio) {Início};
+        \node[componente, below=of inicio, text width=4.3cm] (config)
+            {Configuração experimental};
+        \node[componente, below=of config, text width=4.3cm] (selecionar)
+            {Selecionar valor de \(N\)};
+        \node[componente, below=of selecionar, text width=4.3cm] (aquec)
+            {Executar 3 aquecimentos};
+        \node[componente, below=of aquec, text width=4.3cm] (medir)
+            {20 medições válidas\\\(t_0\), 1000 kernels, \(t_1\)};
+        \node[componente, below=of medir, text width=4.3cm] (mediana)
+            {Calcular mediana\\e normalizar tempo};
+        \node[decisao, below=of mediana, text width=2.5cm] (validar)
+            {Resultado\\correto?};
+        \node[componente, below left=0.55cm and 1.45cm of validar, text width=3.3cm] (metricas)
+            {Calcular métricas\\e imprimir};
+        \node[componente, below right=0.55cm and 1.45cm of validar, text width=3.0cm] (abortar)
+            {Abortar};
+        \node[decisao, below=1.6cm of metricas, text width=2.6cm] (outro)
+            {Existe\\outro \(N\)?};
+        \node[processo, below=of outro, text width=3.4cm] (fim)
+            {Fim};
+
+        \draw[fluxo] (inicio) -- (config);
+        \draw[fluxo] (config) -- (selecionar);
+        \draw[fluxo] (selecionar) -- (aquec);
+        \draw[fluxo] (aquec) -- (medir);
+        \draw[fluxo] (medir) -- (mediana);
+        \draw[fluxo] (mediana) -- (validar);
+        \draw[fluxo] (validar) -| node[pos=0.25, above] {sim} (metricas);
+        \draw[fluxo] (validar) -| node[pos=0.25, above] {não} (abortar);
+        \draw[fluxo] (metricas) -- (outro);
+        \draw[fluxo] (outro) -- node[right] {não} (fim);
+        \draw[fluxo] (outro.west) -- ++(-0.8,0) |- (selecionar.west);
+        \node[above] at ($(outro.west)+(-0.15,0)$) {sim};
+    \end{tikzpicture}
 
     \caption{Fluxo de execução do benchmark sequencial.}
     \label{fig:atvd04-fluxo}
@@ -1193,27 +1217,37 @@ Uma possível decomposição seria:
 
 \begin{figure}[htbp]
     \centering
-    \begin{minipage}{0.85\textwidth}
-\begin{verbatim}
-              Iteracoes independentes
-                       |
-          +------------+------------+
-          |            |            |
-          v            v            v
-       Thread 1     Thread 2      Thread P
-          |            |            |
-          v            v            v
-         S_1          S_2          S_P
-          |            |            |
-          +------------+------------+
-                       |
-                       v
-                   Reduction
-                       |
-                       v
-                       S
-\end{verbatim}
-    \end{minipage}
+    \begin{tikzpicture}[node distance=0.75cm and 0.8cm, font=\small]
+        \node[processo, text width=4.8cm] (iter)
+            {Iterações independentes\\\(i=1,\ldots,N-1\)};
+
+        \node[thread, below left=of iter, text width=2.6cm] (t1)
+            {Thread 1\\subfaixa 1};
+        \node[thread, below=of iter, text width=2.6cm] (t2)
+            {Thread 2\\subfaixa 2};
+        \node[thread, below right=of iter, text width=2.6cm] (tp)
+            {Thread \(P\)\\subfaixa \(P\)};
+
+        \node[componente, below=of t1, text width=2.4cm] (s1) {\(S_1\)};
+        \node[componente, below=of t2, text width=2.4cm] (s2) {\(S_2\)};
+        \node[componente, below=of tp, text width=2.4cm] (sp) {\(S_P\)};
+
+        \node[processo, below=1.0cm of s2, text width=4.0cm] (red)
+            {Redução\\\(S=\sum_{p=1}^{P}S_p\)};
+        \node[componente, below=of red, text width=3.0cm] (s)
+            {Soma final\\\(S\)};
+
+        \draw[fluxo] (iter) -- (t1);
+        \draw[fluxo] (iter) -- (t2);
+        \draw[fluxo] (iter) -- (tp);
+        \draw[fluxo] (t1) -- (s1);
+        \draw[fluxo] (t2) -- (s2);
+        \draw[fluxo] (tp) -- (sp);
+        \draw[fluxo] (s1) |- (red);
+        \draw[fluxo] (s2) -- (red);
+        \draw[fluxo] (sp) |- (red);
+        \draw[fluxo] (red) -- (s);
+    \end{tikzpicture}
 
     \caption{Decomposição conceitual do acumulador por redução.}
     \label{fig:atvd04-reduction}
@@ -1256,7 +1290,7 @@ exige sincronização. O ponto crítico é a combinação dos resultados
 parciais.
 
 
-\section{Limitações e ameaças à validade}
+\section{Limitações}
 
 \label{sec:atvd04-limitacoes}
 
@@ -1343,7 +1377,7 @@ Dessa forma, a atividade estabelece tanto um baseline sequencial validado
 quanto a fundamentação necessária para uma implementação paralela posterior.
 
 
-\section{Síntese para defesa oral}
+\section{Síntese}
 
 \label{sec:atvd04-defesa}
 

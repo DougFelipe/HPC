@@ -160,14 +160,34 @@ private(count)
 
 cria uma cópia independente de \texttt{count} para cada thread.
 
-Conceitualmente:
+As cópias por thread são representadas na Figura~\ref{fig:atvd07-private}.
 
-\begin{verbatim}
-Thread 0 -> count_0
-Thread 1 -> count_1
-Thread 2 -> count_2
-Thread 3 -> count_3
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[node distance=0.6cm and 0.45cm, font=\small]
+        \node[componente, text width=3.4cm] (shared)
+            {Variável externa\\\texttt{count}};
+        \node[processo, right=1.1cm of shared, text width=3.5cm] (clause)
+            {\texttt{private(count)}};
+        \node[thread, below left=of clause, text width=2.4cm] (t0)
+            {Thread 0\\cópia privada};
+        \node[thread, below=of clause, text width=2.4cm] (t1)
+            {Thread 1\\cópia privada};
+        \node[thread, below right=of clause, text width=2.4cm] (t2)
+            {Thread \(T-1\)\\cópia privada};
+        \node[componente, below=0.9cm of t1, text width=4.2cm] (discard)
+            {Cópias descartadas\\sem soma global};
+        \draw[fluxo] (shared) -- (clause);
+        \draw[fluxo] (clause) -- (t0);
+        \draw[fluxo] (clause) -- (t1);
+        \draw[fluxo] (clause) -- (t2);
+        \draw[fluxo] (t0) |- (discard);
+        \draw[fluxo] (t1) -- (discard);
+        \draw[fluxo] (t2) |- (discard);
+    \end{tikzpicture}
+    \caption{Cópias privadas independentes sem agregação ao contador externo.}
+    \label{fig:atvd07-private}
+\end{figure}
 
 As cópias privadas não recebem automaticamente o valor anteriormente
 armazenado na variável original e também não são automaticamente combinadas
@@ -343,14 +363,26 @@ reduction(+:count)
 Cada thread realiza sua própria acumulação e, ao final da região, OpenMP
 combina os valores privados.
 
-Conceitualmente:
+O processo de combinação é ilustrado na Figura~\ref{fig:atvd07-reduction}.
 
-\begin{verbatim}
-Thread 0 -> C0 --+
-Thread 1 -> C1 --+
-Thread 2 -> C2 --+--> C0 + C1 + C2 + C3
-Thread 3 -> C3 --+
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[node distance=0.55cm and 0.55cm, font=\small]
+        \node[thread, text width=2.4cm] (t0) {Thread 0\\soma privada \(C_0\)};
+        \node[thread, right=of t0, text width=2.4cm] (t1) {Thread 1\\soma privada \(C_1\)};
+        \node[thread, right=of t1, text width=2.4cm] (tt) {Thread \(T-1\)\\soma privada \(C_{T-1}\)};
+        \node[processo, below=of t1, text width=4.0cm] (combine)
+            {Combinar\\\texttt{reduction(+:count)}};
+        \node[componente, below=of combine, text width=3.2cm] (total)
+            {Contagem global\\\(C=\sum_i C_i\)};
+        \draw[fluxo] (t0) -- (combine);
+        \draw[fluxo] (t1) -- (combine);
+        \draw[fluxo] (tt) -- (combine);
+        \draw[fluxo] (combine) -- (total);
+    \end{tikzpicture}
+    \caption{Agregação das contagens privadas pela cláusula \texttt{reduction}.}
+    \label{fig:atvd07-reduction}
+\end{figure}
 
 Assim,
 
@@ -524,37 +556,49 @@ Depois de obtida uma implementação correta, como a política utilizada para
 distribuir as iterações influencia o desempenho?
 \end{quote}
 
-Assim, a progressão didática adotada foi:
+Assim, a progressão didática adotada está representada na
+Figura~\ref{fig:atvd07-percurso}.
 
-\begin{verbatim}
-Contagem sequencial
-        |
-        v
-Escopo de dados
-        |
-        +--> private
-        +--> firstprivate
-        +--> lastprivate
-        +--> firstprivate + lastprivate
-        +--> default(none)
-        +--> reduction
-                     |
-                     v
-             validar correção
-                     |
-                     v
-            selecionar reduction
-                     |
-                     v
-             escalonamento
-                     |
-        +------------+------------+
-        |      |      |      |    |
-      static dynamic guided auto runtime
-                     |
-                     v
-            comparar desempenho
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[node distance=0.45cm and 0.45cm, font=\small]
+        \node[processo, text width=4.4cm] (seq) {Contagem sequencial};
+        \node[componente, below=of seq, text width=4.4cm] (scope)
+            {Investigar escopo de dados};
+        \node[thread, below left=of scope, text width=2.7cm] (private)
+            {\texttt{private}, \texttt{firstprivate},\\\texttt{lastprivate} e combinação};
+        \node[thread, below=of scope, text width=2.7cm] (default)
+            {\texttt{default(none)}};
+        \node[thread, below right=of scope, text width=2.7cm] (reduction)
+            {\texttt{reduction}};
+        \node[componente, below=0.8cm of default, text width=3.8cm] (check)
+            {Validar resultados};
+        \node[decisao, below=of check, text width=3.2cm] (valid)
+            {Contagem correta?};
+        \node[componente, right=1.2cm of valid, yshift=-0.7cm, text width=2.5cm] (discard)
+            {Descartar versão incorreta};
+        \node[processo, below=of valid, text width=4.4cm] (selected)
+            {Selecionar \texttt{reduction}};
+        \node[componente, below=of selected, text width=4.4cm] (schedule)
+            {Comparar schedules\\static, dynamic, guided, auto, runtime};
+        \node[processo, below=of schedule, text width=4.4cm] (performance)
+            {Analisar desempenho};
+        \draw[fluxo] (seq) -- (scope);
+        \draw[fluxo] (scope) -- (private);
+        \draw[fluxo] (scope) -- (default);
+        \draw[fluxo] (scope) -- (reduction);
+        \draw[fluxo] (private.south) |- (check.west);
+        \draw[fluxo] (default.south) -- (check.north);
+        \draw[fluxo] (reduction.south) |- (check.east);
+        \draw[fluxo] (check) -- (valid);
+        \draw[fluxo] (valid) -- node[right] {sim} (selected);
+        \draw[fluxo] (valid.east) -- node[pos=0.5,above] {não} (discard.west);
+        \draw[fluxo] (selected) -- (schedule);
+        \draw[fluxo] (schedule) -- (performance);
+    \end{tikzpicture}
+    \caption{Progressão da análise de escopo até a comparação de desempenho.}
+    \label{fig:atvd07-percurso}
+\end{figure}
 
 A atividade, portanto, separa explicitamente dois problemas que podem ser
 confundidos em uma primeira abordagem à programação paralela:
@@ -843,18 +887,23 @@ seu comportamento experimental.
 
 Entretanto, elas não foram consideradas candidatas à melhor solução.
 
-O critério utilizado foi:
+O critério utilizado está representado na Figura~\ref{fig:atvd07-correcao}.
 
-\begin{verbatim}
-resultado correto?
-      |
-   nao +--> descartar como solucao
-      |
-     sim
-      |
-      v
-comparar desempenho
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[node distance=0.75cm and 1.0cm, font=\small]
+        \node[decisao, text width=3.2cm] (valid)
+            {Resultado correto?};
+        \node[componente, below left=of valid, text width=3.4cm] (discard)
+            {Descartar como\\solução paralela};
+        \node[processo, below right=of valid, text width=3.4cm] (perf)
+            {Comparar desempenho};
+        \draw[fluxo] (valid) -| node[pos=0.25,left] {não} (discard);
+        \draw[fluxo] (valid) -| node[pos=0.25,right] {sim} (perf);
+    \end{tikzpicture}
+    \caption{A correção funcional precede a comparação de desempenho.}
+    \label{fig:atvd07-correcao}
+\end{figure}
 
 Essa decisão evita interpretar uma implementação que realiza uma computação
 incorreta como uma otimização válida.
@@ -923,14 +972,28 @@ ordem poderia introduzir viés sistemático.
 
 Foi implementada uma rotação determinística.
 
-Conceitualmente:
+O mecanismo de rotação está representado na
+Figura~\ref{fig:atvd07-rotacao}.
 
-\begin{verbatim}
-medicao 0: A B C D E ...
-medicao 1: B C D E ... A
-medicao 2: C D E ... A B
-...
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[node distance=0.55cm and 0.55cm, font=\small]
+        \node[processo, text width=2.8cm] (measurement)
+            {Medição \(m\)};
+        \node[componente, right=of measurement, text width=3.4cm] (start)
+            {Escolher início\\\(m \bmod K\)};
+        \node[componente, right=of start, text width=4.0cm] (run)
+            {Executar \(K\) versões\\em ordem circular};
+        \node[processo, right=of run, text width=2.8cm] (next)
+            {Próxima medição\\\(m \leftarrow m+1\)};
+        \draw[fluxo] (measurement) -- (start);
+        \draw[fluxo] (start) -- (run);
+        \draw[fluxo] (run) -- (next);
+        \draw[fluxo] (next.north) -- ++(0,0.65) -| (start.north);
+    \end{tikzpicture}
+    \caption{Rotação determinística da ordem das versões entre medições.}
+    \label{fig:atvd07-rotacao}
+\end{figure}
 
 A mesma estratégia foi utilizada durante os aquecimentos.
 
@@ -958,127 +1021,90 @@ referência, e não como garantia para todas as variantes.
 
 A estrutura geral do programa pode ser representada pelo diagrama a seguir.
 
-\begin{verbatim}
-                         +-------------------+
-                         |       main        |
-                         +---------+---------+
-                                   |
-                  +----------------+----------------+
-                  |                                 |
-                  v                                 v
-         Validacao inicial                  Configuracao OpenMP
-                  |                                 |
-             is_prime()                       4 threads
-                  |                         dynamic = off
-                  |                                 |
-                  +----------------+----------------+
-                                   |
-                                   v
-                     EXPERIMENTO A - DATA SHARING
-                                   |
-              +---------+----------+----------+----------+
-              |         |          |          |          |
-              v         v          v          v          v
-          private   firstprivate lastprivate first+last default(none)
-              \         |          |          |         /
-               \        |          |          |        /
-                +-------+----------+----------+-------+
-                                   |
-                             reduction
-                                   |
-                                   v
-                        Validacao funcional
-                                   |
-                                   v
-                   selecionar versao correta
-                                   |
-                           REDUCTION
-                                   |
-                                   v
-                      EXPERIMENTO B - SCHEDULE
-                                   |
-            +-----------+----------+--------+----------+
-            |           |          |        |          |
-            v           v          v        v          v
-          static      dynamic    guided    auto     runtime
-                                   |
-                                   v
-                           20 medicoes
-                                   |
-                                   v
-                             tempo medio
-                                   |
-                                   v
-                        tabelas + arquivos CSV
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \resizebox{0.88\textwidth}{!}{%
+    \begin{tikzpicture}[node distance=0.45cm, font=\small]
+        \node[processo, text width=3.0cm] (main) {\texttt{main()}};
+        \node[componente, below=of main, text width=6.6cm] (setup)
+            {Configuração comum\\4 threads, entrada \(N\), \texttt{is\_prime()}};
+        \node[thread, below=of setup, text width=7.6cm] (scope)
+            {Experimento A -- escopo de dados\\
+             Sequencial, \texttt{private}, \texttt{firstprivate},
+             \texttt{lastprivate}, combinação, \texttt{default(none)}
+             e \texttt{reduction}};
+        \node[processo, below=of scope, text width=6.6cm] (select)
+            {Validar resultados e selecionar \texttt{reduction}};
+        \node[thread, below=of select, text width=7.6cm] (schedule)
+            {Experimento B -- escalonamento\\
+             \texttt{reduction} com \texttt{static}, \texttt{dynamic},
+             \texttt{guided}, \texttt{auto} e \texttt{runtime}};
+        \node[processo, below=of schedule, text width=6.6cm] (benchmark)
+            {\texttt{benchmark\_function\_set()}\\
+             calibração, aquecimentos e 20 medições};
+        \node[componente, below=of benchmark, text width=7.0cm] (outputs)
+            {Exportar \texttt{data\_sharing\_results.csv}\\
+             e \texttt{scheduling\_results.csv}};
+
+        \draw[fluxo] (main) -- (setup);
+        \draw[fluxo] (setup) -- (scope);
+        \draw[fluxo] (scope) -- (select);
+        \draw[fluxo] (select) -- (schedule);
+        \draw[fluxo] (schedule) -- (benchmark);
+        \draw[fluxo] (benchmark) -- (outputs);
+    \end{tikzpicture}%
+    }
+    \caption{Diagrama UML de componentes dos dois experimentos da Atividade 7.}
+    \label{fig:atvd07-estrutura}
+\end{figure}
 
 
 % ============================================================
 \section{Fluxo de execução}
 \label{sec:atvd07-fluxo}
 
-O fluxo completo da execução foi:
+O fluxo completo da execução está modelado na
+Figura~\ref{fig:atvd07-fluxo}.
 
-\begin{verbatim}
-INICIO
-  |
-  +--> definir 4 threads
-  |
-  +--> desabilitar ajuste dinamico de threads
-  |
-  +--> configurar runtime = dynamic, chunk 1
-  |
-  +--> validar is_prime()
-  |
-  +--> verificar numero efetivo de threads
-  |
-  +====================================================+
-  | EXPERIMENTO A - ESCOPO DE DADOS                    |
-  |                                                    |
-  | para cada N                                        |
-  |                                                    |
-  |  +--> executar sequencial                          |
-  |  +--> executar private                             |
-  |  +--> executar firstprivate                        |
-  |  +--> executar lastprivate                         |
-  |  +--> executar firstprivate + lastprivate          |
-  |  +--> executar default(none)                       |
-  |  +--> executar reduction                           |
-  |                                                    |
-  |  +--> validar referencia                           |
-  |  +--> calibrar repeticoes                          |
-  |  +--> executar 3 warm-ups                          |
-  |  +--> realizar 20 medicoes rotacionadas            |
-  |  +--> calcular medias                              |
-  +====================================================+
-  |
-  +--> selecionar reduction como base correta
-  |
-  +====================================================+
-  | EXPERIMENTO B - ESCALONAMENTO                       |
-  |                                                    |
-  | para cada N                                        |
-  |                                                    |
-  |  +--> static                                       |
-  |  +--> dynamic                                      |
-  |  +--> guided                                       |
-  |  +--> auto                                         |
-  |  +--> runtime                                      |
-  |                                                    |
-  |  +--> validar todas as contagens                   |
-  |  +--> executar warm-ups                            |
-  |  +--> realizar 20 medicoes rotacionadas            |
-  |  +--> calcular medias                              |
-  +====================================================+
-  |
-  +--> imprimir tabelas
-  |
-  +--> gerar data_sharing_results.csv
-  |
-  +--> gerar scheduling_results.csv
-  |
- FIM
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \resizebox{!}{0.70\textheight}{%
+    \begin{tikzpicture}[node distance=0.45cm, font=\small]
+        \node[processo, text width=5.8cm] (start) {Início};
+        \node[componente, below=of start, text width=6.8cm] (setup)
+            {Configurar 4 threads, desativar ajuste dinâmico\\
+             e definir \texttt{runtime = dynamic, chunk=1}};
+        \node[componente, below=of setup, text width=6.8cm] (validate)
+            {Validar \texttt{is\_prime()} e confirmar a equipe de threads};
+        \node[thread, below=of validate, text width=7.2cm] (experimentA)
+            {Experimento A: para cada \(N\), executar as sete versões de
+             escopo, validar a referência, calibrar repetições, realizar
+             3 aquecimentos e 20 medições rotacionadas; calcular médias};
+        \node[decisao, below=of experimentA, text width=3.6cm] (select)
+            {Reduction reproduz a referência?};
+        \node[processo, right=1.0cm of select, text width=2.7cm] (abort)
+            {Interromper};
+        \node[thread, below=of select, text width=7.2cm] (experimentB)
+            {Experimento B: para cada \(N\), executar reduction com os cinco
+             schedules, validar contagens, aquecer e realizar 20 medições
+             rotacionadas; calcular médias};
+        \node[componente, below=of experimentB, text width=6.8cm] (export)
+            {Imprimir tabelas e exportar os dois arquivos CSV};
+        \node[processo, below=of export, text width=5.8cm] (end) {Fim};
+
+        \draw[fluxo] (start) -- (setup);
+        \draw[fluxo] (setup) -- (validate);
+        \draw[fluxo] (validate) -- (experimentA);
+        \draw[fluxo] (experimentA) -- (select);
+        \draw[fluxo] (select.east) -- node[above] {não} (abort.west);
+        \draw[fluxo] (select) -- node[right] {sim} (experimentB);
+        \draw[fluxo] (experimentB) -- (export);
+        \draw[fluxo] (export) -- (end);
+    \end{tikzpicture}%
+    }
+    \caption{Diagrama UML de atividade do fluxo dos experimentos A e B.}
+    \label{fig:atvd07-fluxo}
+\end{figure}
 
 
 % ============================================================
@@ -2278,7 +2304,7 @@ a blocos diferentes.
 
 
 % ============================================================
-\section{Limitações e ameaças à validade}
+\section{Limitações}
 \label{sec:atvd07-limitacoes}
 
 \subsection{Execução em uma única máquina}
@@ -2489,7 +2515,7 @@ quanto a criação das threads}
 
 
 % ============================================================
-\section{Síntese para defesa oral}
+\section{Síntese}
 \label{sec:atvd07-defesa}
 
 Os principais pontos para defesa oral da atividade são:

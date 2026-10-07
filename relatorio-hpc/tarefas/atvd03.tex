@@ -142,45 +142,59 @@ Essa diferença é uma base importante para Computação de Alto Desempenho, poi
 
 A atividade foi organizada em dois programas independentes.
 
-O primeiro programa, apresentado no Código~\ref{lst:atvd03-cont1}, utiliza processos:
+O primeiro programa, apresentado no Código~\ref{lst:atvd03-cont1}, utiliza
+processos. A Figura~\ref{fig:atvd03-modelagem-processos} apresenta essa
+modelagem em forma de diagrama UML de componentes.
 
-\begin{verbatim}
-processo pai
- |
- +-- fork() --> filho 1 --> contador local++
- |
- +-- fork() --> filho 2 --> contador local++
- |
- +-- fork() --> filho 3 --> contador local++
- |
- +-- fork() --> filho 4 --> contador local++
- |
- +-- wait() por todos os filhos
- |
- +-- imprime contador do pai
-\end{verbatim}
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        node distance=0.8cm and 1.0cm,
+        every node/.style={font=\small}
+    ]
+        \node[componente, text width=4.0cm] (pai) {Processo pai\\\texttt{contador = 0}};
+        \node[componente, below=of pai, text width=4.0cm] (fork) {\texttt{fork()}\\criação dos filhos};
+        \node[processo, below=of fork, text width=5.0cm] (filhos) {4 processos filhos\\cópias privadas de \texttt{contador}\\cada cópia chega a \(1\,000\,000\)};
+        \node[componente, below=of filhos, text width=4.0cm] (wait) {\texttt{wait(NULL)}\\sincronização do pai};
+        \node[componente, below=of wait, text width=4.0cm] (print) {Imprimir contador\\do processo pai};
+        \node[componente, right=1.5cm of filhos, text width=3.4cm] (mem) {Memória isolada\\sem compartilhamento automático};
 
-O segundo programa, apresentado no Código~\ref{lst:atvd03-cont2}, utiliza threads:
+        \draw[fluxo] (pai) -- (fork);
+        \draw[fluxo] (fork) -- (filhos);
+        \draw[fluxo] (filhos) -- (wait);
+        \draw[fluxo] (wait) -- (print);
+        \draw[fluxo] (filhos) -- (mem);
+    \end{tikzpicture}
+    \caption{Modelagem UML do programa baseado em processos.}
+    \label{fig:atvd03-modelagem-processos}
+\end{figure}
 
-\begin{verbatim}
-processo principal
- |
- +-- pthread_create() --> thread 1
- |
- +-- pthread_create() --> thread 2
- |
- +-- pthread_create() --> thread 3
- |
- +-- pthread_create() --> thread 4
- |
- +-- todas executam incrementar()
- |
- +-- todas acessam o mesmo contador global
- |
- +-- pthread_join() por todas as threads
- |
- +-- imprime contador final
-\end{verbatim}
+O segundo programa, apresentado no Código~\ref{lst:atvd03-cont2}, utiliza
+threads. A Figura~\ref{fig:atvd03-modelagem-threads} mostra a modelagem
+correspondente.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        node distance=0.8cm and 1.0cm,
+        every node/.style={font=\small}
+    ]
+        \node[componente, text width=4.0cm] (main) {Processo principal\\\texttt{contador} global};
+        \node[componente, below=of main, text width=4.0cm] (create) {\texttt{pthread\_create()}\\criação das threads};
+        \node[thread, below=of create, text width=4.7cm] (threads) {4 threads\\executam \texttt{incrementar()}};
+        \node[componente, below=of threads, text width=4.7cm] (shared) {Objeto compartilhado\\\texttt{contador++}};
+        \node[componente, below=of shared, text width=4.0cm] (join) {\texttt{pthread\_join()}\\impressão final};
+        \node[componente, right=1.5cm of shared, text width=3.4cm] (race) {Escrita concorrente\\sem sincronização};
+
+        \draw[fluxo] (main) -- (create);
+        \draw[fluxo] (create) -- (threads);
+        \draw[fluxo] (threads) -- (shared);
+        \draw[fluxo] (shared) -- (join);
+        \draw[fluxo] (shared) -- (race);
+    \end{tikzpicture}
+    \caption{Modelagem UML do programa baseado em threads.}
+    \label{fig:atvd03-modelagem-threads}
+\end{figure}
 
 Em ambos os casos, as constantes utilizadas são:
 
@@ -286,29 +300,20 @@ A Figura~\ref{fig:atvd03-processos} resume o caso com processos.
 
 \begin{figure}[htbp]
     \centering
-    \begin{minipage}{0.86\textwidth}
-\begin{verbatim}
-Antes do fork:
+    \begin{tikzpicture}[
+        node distance=0.8cm and 1.1cm,
+        every node/.style={font=\small}
+    ]
+        \node[componente, text width=3.5cm] (pai) {\textbf{Pai}\\\texttt{contador = 0}};
+        \node[processo, right=of pai, text width=4.8cm] (filhos) {\textbf{Filhos 1..4}\\cada processo possui\\\texttt{contador = 1000000}};
+        \node[componente, below=of pai, text width=3.5cm] (saida) {\textbf{Saída do pai}\\\texttt{contador = 0}};
+        \node[componente, below=of filhos, text width=4.8cm] (isolamento) {Espaços de endereçamento independentes};
 
-    Pai
-    contador = 0
-
-Depois dos fork():
-
-    Pai                 Filho 1             Filho 2
-    contador = 0        contador = 0        contador = 0
-         |                   |                   |
-         |             incrementa           incrementa
-         |                   |                   |
-         |             contador = 1000000   contador = 1000000
-         |
-         +-- wait()
-         |
-         v
-    imprime contador = 0
-\end{verbatim}
-    \end{minipage}
-    \caption{Representação estrutural simplificada do programa com processos.}
+        \draw[fluxo] (pai) -- node[above, font=\scriptsize] {\texttt{fork()}} (filhos);
+        \draw[fluxo] (pai) -- node[left, font=\scriptsize] {\texttt{wait()}} (saida);
+        \draw[fluxo] (filhos) -- node[right, font=\scriptsize] {cópias privadas} (isolamento);
+    \end{tikzpicture}
+    \caption{Diagrama UML estrutural do programa com processos.}
     \label{fig:atvd03-processos}
 \end{figure}
 
@@ -316,24 +321,20 @@ A Figura~\ref{fig:atvd03-threads} resume o caso com threads.
 
 \begin{figure}[htbp]
     \centering
-    \begin{minipage}{0.86\textwidth}
-\begin{verbatim}
-Processo unico
+    \begin{tikzpicture}[
+        node distance=0.8cm and 1.0cm,
+        every node/.style={font=\small}
+    ]
+        \node[thread, text width=4.4cm] (threads) {\textbf{Threads 1..4}\\ler, somar e gravar};
+        \node[componente, right=of threads, text width=4.2cm] (contador) {\textbf{Objeto compartilhado}\\\texttt{contador}};
+        \node[componente, below=of contador, text width=4.2cm] (resultado) {Resultado final\\dependente da interleaving};
+        \node[componente, below=of threads, text width=4.4cm] (race) {Mesmo processo\\memória compartilhada};
 
-    contador compartilhado
-             ^
-             |
-   +---------+---------+---------+
-   |         |         |         |
- Thread 1 Thread 2 Thread 3 Thread 4
-   |         |         |         |
-   +-- contador++ concorrente ---+
-
-Resultado:
-    valor final depende da intercalacao das operacoes
-\end{verbatim}
-    \end{minipage}
-    \caption{Representação estrutural simplificada do programa com threads.}
+        \draw[fluxo] (threads) -- node[above, font=\scriptsize] {\texttt{contador++}} (contador);
+        \draw[fluxo] (contador) -- node[right, font=\scriptsize] {sem sincronização} (resultado);
+        \draw[fluxo] (threads) -- (race);
+    \end{tikzpicture}
+    \caption{Diagrama UML estrutural do programa com threads.}
     \label{fig:atvd03-threads}
 \end{figure}
 
@@ -344,37 +345,45 @@ Resultado:
 
 O fluxo do programa \texttt{cont1.c} é:
 
-\begin{verbatim}
-INICIO
-  |
-  v
-contador global recebe 0
-  |
-  v
-imprime contador inicial
-  |
-  v
-para i = 0 ate 3
-  |
-  +-- fork()
-        |
-        +-- se filho:
-        |      incrementar contador local 1000000 vezes
-        |      imprimir PID e contador local
-        |      encerrar filho
-        |
-        +-- se pai:
-               continuar criando filhos
-  |
-  v
-pai executa wait() quatro vezes
-  |
-  v
-pai imprime seu contador
-  |
-  v
-FIM
-\end{verbatim}
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=0.55cm and 0.9cm,
+        every node/.style={font=\small}
+    ]
+        \node[processo, text width=2.7cm] (inicio) {Início};
+        \node[componente, below=of inicio, text width=4.0cm] (init) {\texttt{contador = 0}\\imprimir valor inicial};
+        \node[componente, below=of init, text width=4.0cm] (loop) {Laço de criação\\4 iterações};
+        \node[componente, below=of loop, text width=3.2cm] (fork) {\texttt{fork()}};
+        \node[decisao, below=of fork, text width=2.4cm] (decide) {É filho?};
+
+        \node[processo, below left=0.9cm and 0.9cm of decide, text width=3.0cm] (filho) {Incrementar contador local};
+        \node[processo, below=of filho, text width=3.0cm] (printfilho) {Imprimir PID\\e contador};
+        \node[processo, below=of printfilho, text width=3.0cm] (exit) {Encerrar filho};
+
+        \node[componente, below right=0.9cm and 0.9cm of decide, text width=3.0cm] (pai) {Continuar no pai};
+        \node[decisao, below=of pai, text width=2.4cm] (more) {4 filhos?};
+        \node[componente, below=of more, text width=3.0cm] (wait) {\texttt{wait(NULL)}};
+        \node[componente, below=of wait, text width=3.0cm] (printpai) {Imprimir contador\\do pai};
+        \node[processo, below=of printpai, text width=2.7cm] (fim) {Fim};
+
+        \draw[fluxo] (inicio) -- (init);
+        \draw[fluxo] (init) -- (loop);
+        \draw[fluxo] (loop) -- (fork);
+        \draw[fluxo] (fork) -- (decide);
+        \draw[fluxo] (decide) -- node[above left, font=\scriptsize] {sim} (filho);
+        \draw[fluxo] (filho) -- (printfilho);
+        \draw[fluxo] (printfilho) -- (exit);
+        \draw[fluxo] (decide) -- node[above right, font=\scriptsize] {não} (pai);
+        \draw[fluxo] (pai) -- (more);
+        \draw[fluxo] (more) -- node[right, font=\scriptsize] {sim} (wait);
+        \draw[fluxo] (wait) -- (printpai);
+        \draw[fluxo] (printpai) -- (fim);
+        \draw[fluxo] (more.east) -- ++(0.7,0) |- node[pos=0.25, right, font=\scriptsize] {não} (fork.east);
+    \end{tikzpicture}
+    \caption{Diagrama UML de atividade do fluxo com processos.}
+    \label{fig:atvd03-fluxo-processos}
+\end{figure}
 
 O ponto central desse fluxo é que o pai aguarda os filhos, mas não recebe automaticamente as alterações feitas no contador de cada um.
 
@@ -382,33 +391,32 @@ O ponto central desse fluxo é que o pai aguarda os filhos, mas não recebe auto
 
 O fluxo do programa \texttt{cont2.c} é:
 
-\begin{verbatim}
-INICIO
-  |
-  v
-contador global recebe 0
-  |
-  v
-imprime contador inicial
-  |
-  v
-cria 4 threads com pthread_create()
-  |
-  v
-cada thread executa incrementar()
-  |
-  v
-todas executam contador++ sobre a mesma variavel
-  |
-  v
-thread principal aguarda com pthread_join()
-  |
-  v
-imprime contador final
-  |
-  v
-FIM
-\end{verbatim}
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=0.55cm and 0.9cm,
+        every node/.style={font=\small}
+    ]
+        \node[processo, text width=2.7cm] (inicio) {Início};
+        \node[componente, below=of inicio, text width=4.2cm] (init) {\texttt{contador = 0}\\imprimir valor inicial};
+        \node[componente, below=of init, text width=4.2cm] (create) {Criar 4 threads\\\texttt{pthread\_create()}};
+        \node[thread, below=of create, text width=4.2cm] (threads) {Threads 1..4\\executam \texttt{incrementar()}};
+        \node[componente, below=of threads, text width=4.2cm] (inc) {Atualizar \texttt{contador++}\\sem sincronização};
+        \node[componente, below=of inc, text width=4.2cm] (join) {Aguardar threads\\\texttt{pthread\_join()}};
+        \node[componente, below=of join, text width=4.2cm] (print) {Imprimir contador final};
+        \node[processo, below=of print, text width=2.7cm] (fim) {Fim};
+
+        \draw[fluxo] (inicio) -- (init);
+        \draw[fluxo] (init) -- (create);
+        \draw[fluxo] (create) -- (threads);
+        \draw[fluxo] (threads) -- (inc);
+        \draw[fluxo] (inc) -- node[right, font=\scriptsize] {sem mutex/atomic} (join);
+        \draw[fluxo] (join) -- (print);
+        \draw[fluxo] (print) -- (fim);
+    \end{tikzpicture}
+    \caption{Diagrama UML de atividade do fluxo com threads.}
+    \label{fig:atvd03-fluxo-threads}
+\end{figure}
 
 Nesse caso, o ponto central é que todas as threads escrevem na mesma variável sem sincronização.
 
@@ -816,7 +824,7 @@ A Tabela~\ref{tab:atvd03-comparacao} resume as diferenças observadas.
     \end{tabular}
 \end{table}
 
-\section{Limitações e ameaças à validade}
+\section{Limitações}
 \label{sec:atvd03-limitacoes}
 
 Os resultados devem ser interpretados dentro do escopo demonstrativo da atividade.
@@ -853,7 +861,7 @@ Assim, a atividade evidencia duas lições complementares:
 
 Em termos de Computação de Alto Desempenho, essa distinção é essencial. A correção de uma aplicação concorrente depende tanto da divisão do trabalho quanto da forma como os dados são compartilhados, protegidos ou combinados.
 
-\section{Síntese para defesa oral}
+\section{Síntese}
 \label{sec:atvd03-defesa}
 
 Os principais pontos para apresentação oral da atividade são:

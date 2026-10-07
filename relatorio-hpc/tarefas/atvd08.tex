@@ -703,7 +703,7 @@ implementação.
         \node (main) at (0,0)
         {\texttt{main}};
 
-        \node (init) at (-5,-2)
+        \node (init) at (-5.5,-2)
         {\texttt{initialize\_vector}\\
          2 threads};
 
@@ -711,16 +711,16 @@ implementação.
         {\texttt{parallel sections}\\
          2 threads externas};
 
-        \node (output) at (5,-2)
+        \node (output) at (5.5,-2)
         {\texttt{single}\\
          saída consolidada};
 
-        \node (integral) at (-2,-4.5)
+        \node (integral) at (-3,-4.5)
         {\texttt{compute\_integral}\\
          região interna: 2 threads\\
          \texttt{for + reduction}};
 
-        \node (derivative) at (2,-4.5)
+        \node (derivative) at (3,-4.5)
         {\texttt{compute\_derivative}\\
          região interna: 2 threads\\
          \texttt{parallel for}};
@@ -1270,23 +1270,23 @@ distribuição de threads observada na execução validada.
         \node (outer) at (0,0)
         {Equipe externa\\2 threads};
 
-        \node (t1) at (-3,-2)
+        \node (t1) at (-3.5,-2)
         {Thread externa 1\\Section Integral};
 
-        \node (t0) at (3,-2)
+        \node (t0) at (3.5,-2)
         {Thread externa 0\\Section Derivada};
 
-        \node (i0) at (-4,-4)
-        {Thread interna 0};
+        \node (i0) at (-4.5,-4)
+        {Thread interna 0\\Integral};
 
-        \node (i1) at (-2,-4)
-        {Thread interna 1};
+        \node (i1) at (-2.5,-4)
+        {Thread interna 1\\Integral};
 
-        \node (d0) at (2,-4)
-        {Thread interna 0};
+        \node (d0) at (2.5,-4)
+        {Thread interna 0\\Derivada};
 
-        \node (d1) at (4,-4)
-        {Thread interna 1};
+        \node (d1) at (4.5,-4)
+        {Thread interna 1\\Derivada};
 
         \draw[->] (outer) -- (t1);
         \draw[->] (outer) -- (t0);
@@ -1478,7 +1478,7 @@ threads, repetição das medições e análise estatística dos tempos.
 
 
 % ============================================================================
-\section{Limitações e ameaças à validade}
+\section{Limitações}
 \label{sec:atvd08-limitacoes}
 % ============================================================================
 
@@ -1569,7 +1569,7 @@ não sustentadas experimentalmente.
 
 
 % ============================================================================
-\section{Síntese para defesa oral}
+\section{Síntese}
 \label{sec:atvd08-defesa}
 % ============================================================================
 

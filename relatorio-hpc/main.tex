@@ -42,6 +42,7 @@
 
 \pagenumbering{roman}
 
+\setcounter{tocdepth}{0}
 \tableofcontents
 \clearpage
 
@@ -55,11 +56,8 @@
 \hypersetup{pageanchor=true}
 
 \chapter*{Introdução}
-\addcontentsline{toc}{chapter}{Introdução}
 
 Este documento reúne os relatórios das atividades desenvolvidas na primeira unidade da disciplina de Computação de Alto Desempenho.
-Cada atividade será documentada, posteriormente, em termos teóricos, metodológicos e experimentais.
-Nesta versão inicial, o relatório estabelece a estrutura modular do documento e incorpora os códigos-fonte desenvolvidos nas atividades.
 
 \input{tarefas/atvd01}
 \input{tarefas/atvd02}
@@ -71,14 +69,13 @@ Nesta versão inicial, o relatório estabelece a estrutura modular do documento 
 \input{tarefas/atvd08}
 
 \chapter*{Considerações Finais}
-\addcontentsline{toc}{chapter}{Considerações Finais}
 
 % TODO:
 % Preencher posteriormente com uma síntese geral das atividades,
 % após a documentação individual dos resultados e das análises.
 
 \printbibliography[
-    heading=bibintoc,
+    heading=bibliography,
     title={Referências}
 ]
 
